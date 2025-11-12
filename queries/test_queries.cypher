@@ -160,3 +160,100 @@ CREATE (ElvinJ)-[:PERFORMS {instrument: 'drums'}]->(PsaPerf)
 CREATE (PsaPerf)-[:PERFORMING]->(Psalm)
 CREATE (JohnC)-[:COMPOSES]->(Psalm)
 CREATE (ALoveSupreme)-[:RECORDS {trackNumber: 4}]->(PsaPerf)
+
+// Genius of Modern Music, Volume 1
+// Album
+CREATE (GeniusVol1:Recording {
+  title: 'Genius of Modern Music, Volume 1',
+  releaseDate: date('1951-09-01'),
+  label: 'Blue Note'
+})
+
+// Songs
+CREATE (RoundMidnight:Song {title: "'Round Midnight"})
+CREATE (OffMinor:Song {title: 'Off Minor'})
+CREATE (RubyMyDear:Song {title: 'Ruby, My Dear'})
+CREATE (IShouldCare:Song {title: 'I Should Care'})
+CREATE (AprilInParis:Song {title: 'April in Paris'})
+
+// Musicians
+CREATE (TheloMonk:Musician {name: 'Thelonious Monk', primary_instrument: 'piano'})
+CREATE (IdreesS:Musician {name: 'Idrees Sulieman', primary_instrument: 'trumpet'})
+CREATE (DannyQ:Musician {name: 'Danny Quebec West', primary_instrument: 'alto saxophone'})
+CREATE (BillyS:Musician {name: 'Billy Smith', primary_instrument: 'alto saxophone'})
+CREATE (GeneLR:Musician {name: 'Gene Ramey', primary_instrument: 'bass'})
+CREATE (ArtB:Musician {name: 'Art Blakey', primary_instrument: 'drums'})
+CREATE (MiltJ:Musician {name: 'Milt Jackson', primary_instrument: 'vibraphone' })
+CREATE (JohnS:Musician {name: 'John Simmons', primary_instrument: 'bass'})
+CREATE (ShadowW:Musician {name: 'Shadow Wilson', primary_instrument: 'drums'})
+
+// Performances (sessions from 1947-1948)
+CREATE (RMPerf:Performance {date: date('1947-10-24')})
+CREATE (OMPerf:Performance {date: date('1947-10-24')})
+CREATE (RMDPerf:Performance {date: date('1947-10-24')})
+CREATE (ISCPerf:Performance {date: date('1948-07-02')})
+CREATE (AIPPerf:Performance {date: date('1948-07-02')})
+
+// 'Round Midnight (October 24, 1947)
+CREATE (TheloMonk)-[:PERFORMS {instrument: 'piano', role: 'leader'}]->(RMPerf)
+CREATE (IdreesS)-[:PERFORMS {instrument: 'trumpet'}]->(RMPerf)
+CREATE (DannyQ)-[:PERFORMS {instrument: 'alto saxophone'}]->(RMPerf)
+CREATE (GeneLR)-[:PERFORMS {instrument: 'bass'}]->(RMPerf)
+CREATE (ArtB)-[:PERFORMS {instrument: 'drums'}]->(RMPerf)
+CREATE (RMPerf)-[:PERFORMING]->(RoundMidnight)
+CREATE (TheloMonk)-[:COMPOSES]->(RoundMidnight)
+CREATE (GeniusVol1)-[:RECORDS {trackNumber: 20, title: "'Round Midnight"}]->(RMPerf)
+
+// Off Minor (October 24, 1947)
+CREATE (TheloMonk)-[:PERFORMS {instrument: 'piano', role: 'leader'}]->(OMPerf)
+CREATE (IdreesS)-[:PERFORMS {instrument: 'trumpet'}]->(OMPerf)
+CREATE (DannyQ)-[:PERFORMS {instrument: 'alto saxophone'}]->(OMPerf)
+CREATE (GeneLR)-[:PERFORMS {instrument: 'bass'}]->(OMPerf)
+CREATE (ArtB)-[:PERFORMS {instrument: 'drums'}]->(OMPerf)
+CREATE (OMPerf)-[:PERFORMING]->(OffMinor)
+CREATE (TheloMonk)-[:COMPOSES]->(OffMinor)
+CREATE (GeniusVol1)-[:RECORDS {trackNumber: 15, title: 'Off Minor'}]->(OMPerf)
+
+// Ruby, My Dear (October 24, 1947)
+CREATE (TheloMonk)-[:PERFORMS {instrument: 'piano', role: 'leader'}]->(RMDPerf)
+CREATE (IdreesS)-[:PERFORMS {instrument: 'trumpet'}]->(RMDPerf)
+CREATE (DannyQ)-[:PERFORMS {instrument: 'alto saxophone'}]->(RMDPerf)
+CREATE (GeneLR)-[:PERFORMS {instrument: 'bass'}]->(RMDPerf)
+CREATE (ArtB)-[:PERFORMS {instrument: 'drums'}]->(RMDPerf)
+CREATE (RMDPerf)-[:PERFORMING]->(RubyMyDear)
+CREATE (TheloMonk)-[:COMPOSES]->(RubyMyDear)
+CREATE (GeniusVol1)-[:RECORDS {trackNumber: 10, title: 'Ruby, My Dear'}]->(RMDPerf)
+
+// I Should Care (July 2, 1948 - different personnel)
+CREATE (TheloMonk)-[:PERFORMS {instrument: 'piano', role: 'leader'}]->(ISCPerf)
+CREATE (BillyS)-[:PERFORMS {instrument: 'alto saxophone'}]->(ISCPerf)
+CREATE (GeneLR)-[:PERFORMS {instrument: 'bass'}]->(ISCPerf)
+CREATE (ArtB)-[:PERFORMS {instrument: 'drums'}]->(ISCPerf)
+CREATE (ISCPerf)-[:PERFORMING]->(IShouldCare)
+// I Should Care composed by Sammy Cahn, Axel Stordahl, Paul Weston (not Monk)
+CREATE (GeniusVol1)-[:RECORDS {title: 'I Should Care'}]->(ISCPerf)
+
+// April in Paris (July 2, 1948)
+CREATE (TheloMonk)-[:PERFORMS {instrument: 'piano', role: 'leader'}]->(AIPPerf)
+CREATE (BillyS)-[:PERFORMS {instrument: 'alto saxophone'}]->(AIPPerf)
+CREATE (GeneLR)-[:PERFORMS {instrument: 'bass'}]->(AIPPerf)
+CREATE (ArtB)-[:PERFORMS {instrument: 'drums'}]->(AIPPerf)
+CREATE (AIPPerf)-[:PERFORMING]->(AprilInParis)
+// April in Paris composed by Vernon Duke (not Monk)
+CREATE (GeniusVol1)-[:RECORDS {trackNumber: 5, title: 'April in Paris'}]->(AIPPerf)
+
+// // I Mean You (July 1948)
+// Annoying data issue: this was reissued on a Milt Jackson anthology...
+// CREATE (IMeanYou:Song {title: "I Mean You"})
+// CREATE (IMeanYouPerf:Performance)
+// CREATE (ColemanH:Musician {name: 'Coleman Hawkins'})
+
+// CREATE (TheloMonk) -[:COMPOSES]-> (IMeanYou)
+// CREATE (ColemanH) -[:COMPOSES]-> (IMeanYou)
+// CREATE (TheloMonk)-[:PERFORMS {instrument: 'piano', role: 'leader'}]->(IMeanYouPerf)
+// CREATE (MiltJ)-[:PERFORMS {instrument: 'vibraphone'}]->(IMeanYouPerf)
+// CREATE (JohnS)-[:PERFORMS {instrument: 'bass'}]->(IMeanYouPerf)
+// CREATE (ShadowW)-[:PERFORMS {instrument: 'drums'}]->(IMeanYouPerf)
+// CREATE (IMeanYouPerf)-[:PERFORMING]->(IMeanYou)
+
+// CREATE (GeniusVol1)-[:RECORDS {trackNumber: 5, title: 'I Mean You'}]->(IMeanYouPerf)
