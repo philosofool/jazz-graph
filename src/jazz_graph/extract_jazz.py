@@ -4,32 +4,11 @@ import time
 import threading
 import discogs_client
 from jazz_graph.serialize import DiscogsCache
-
-## Several code for working through the discogs API.
-#  This is too slow for working with large batch processing.
-#  Could be very useful in the future for monthly releases
-#  and other updating. Concept: show me stuff on discogs of this
-#  master release.
-
-class RateLimitedClient(discogs_client.Client):
-    def __init__(self, user_agent: str, per_second: float = 0.41, *args, **kwargs):
-        super().__init__(user_agent, *args, **kwargs)
-        self._lock = threading.Lock()
-        self._interval = 1.0 / per_second # default is ~24.9 per second, which is the limit.
-        self._last_call = 0.0
-
-    def _throttled_request(self, method, url, *args, **kwargs):
-        with self._lock:
-            now = time.time()
-            elapsed = now - self._last_call
-            if elapsed < self._interval:
-                time.sleep(self._interval - elapsed)
-            self._last_call = time.time()
-        return super()._request(method, url, *args, **kwargs)
-
-    # override the discogs_client request mechanism
-    def _request(self, method, url, *args, **kwargs):
-        return self._throttled_request(method, url, *args, **kwargs)
+import gzip
+import xml.etree.ElementTree as ET
+from lxml import etree    # pyright: ignore [reportAttributeAccessIssue]
+import jsonlines
+from pathlib import Path
 
 
 PERFORMER_ROLES: set[str] = {
@@ -67,146 +46,12 @@ PERFORMER_ROLES: set[str] = {
 }
 
 
-def double_dfs(tree_1, tree_2):
-    """This is just an express of the process."""
-    seen_1 = set()
-    seen_2 = set()
-    while tree_1 or tree_2:
-        elem_1 = tree_1.pop()
-        if elem_1 not in seen_1:
-            for new_elem in add_tree_elems(elem_1, seen_2):
-                tree_2.append(new_elem)
-        elem_2 = tree_2.pop()
-        if elem_2 not in seen_2:
-            for new_elem in add_tree_elems(elem_2, seen_1):
-                tree_1.append(new_elem)
-
-def add_tree_elems(elem, seen):
-    """Helper."""
-    for elem_of_tree_type in elem:
-        if elem_of_tree_type in seen:
-            continue
-        yield elem_of_tree_type
-        seen.add(elem_of_tree_type)
-
-def extract_jazz(artists: list, releases: list, cache: DiscogsCache, max_iter=10) -> tuple[list, list]:
-    """Given seed list of artists and releases, traverse discogs to find other releases and artists."""
-    seen_artists = set()
-    seen_releases = set()
-    all_artists = []
-    all_releases = []
-    n_iter = 0
-    while artists or releases:
-        if artists and artists[-1].id not in seen_artists:
-            artist = artists.pop()
-            all_artists.append(artist)
-            for new_release in add_releases(artist, seen_artists, seen_releases):
-                releases.append(new_release)
-            # once all the artist's releases have been delivered to the releases, we don't need to traverse the artist again.
-            seen_artists.add(artist.id)
-
-        if releases and releases[-1].id not in seen_releases:
-            release = releases.pop()
-            all_releases.append(release)
-            for new_artist in add_artists(release, seen_artists, seen_releases):
-                artists.append(new_artist)
-            # once all the release's artists have been delivered to the artists, we don't need to traverse the release again.
-            seen_releases.add(release.id)
-        n_iter += 1
-        cache.save_artists_batch(all_artists)
-        cache.save_releases_batch(all_releases)
-        if n_iter == max_iter:
-            break
-    return all_artists, all_releases
-
-def add_releases(artist, seen_artists, seen_releases):
-    """Yield any jazz musician associated with the release."""
-    for release in artist.releases:
-        if release.id in seen_releases:
-            continue
-        try:
-            main_release = get_main_release(release)
-        except MasterlessRecording:
-            seen_releases.add(release.id)
-            continue
-        if main_release.id not in seen_releases:
-            if is_jazz_release(main_release):
-                yield main_release
-        if release.id != main_release.id:
-            # the main release, which is what we care about is yielded to the main body function.
-            # this is safely ignored once it has been, since it's "proper children" are
-            # handled when the main release is.
-            seen_releases.add(release.id)
-
-def add_artists(release, seen_artists, seen_releases):
-    """Yeild any jazz release associated with the artist."""
-    seen_releases.add(release.id)
-    for artist in release.credits:
-        if artist.id in seen_artists:
-            continue
-        if is_jazz_artist(artist):
-            yield artist
-
-def is_jazz_artist(artist):
-    """Return true if the artist released mostly jazz albums.
-
-    # NOTE: this is NOT the best test of whether an artist is a jazz musician.
-    #       Main purpose is to help traverse releases which are likely jazz. If most of the artists
-    #       releases are Jazz, then we should look at them.
-    """
-    n_jazz_releases = 0
-    n_releases = 0
-    if not plays_jazz_instrument(artist):
-        # Filters artist credits for Rudy van Gelder, etc.
-        # I'm not denying the credit here, but these aren't going to find releases.
-        return False
-    for release in artist.releases:
-        n_jazz_releases += is_jazz_release(release)
-        n_releases += 1
-        # depends on sort order, is it okay?
-        if n_releases >= 20:
-            break
-    if n_releases == 0:
-        return False
-    return n_jazz_releases / n_releases >= .5
-
-def plays_jazz_instrument(artist):
-    return artist.role in PERFORMER_ROLES
-
-def is_jazz_release(release):
-    return 'Jazz' in release.genres
-
-class MasterlessRecording(Exception):
-    ...
-
-def get_main_release(release):
-    """Get the main release associated with the release.
-
-    Raises MasterlessRecording if it is a release with no master.
-    """
-
-    try:
-        # in this case, the relase is a master
-        return release.main_release
-    except AttributeError:
-        # release is not a master, so get the master.
-        master = release.master
-    if master is not None:
-        return master.main_release
-    # singles, EPs, may not have a master.
-    # we are limited to main releases to reduce overhead.
-    raise MasterlessRecording()
-
-
 ## Parse discogs from their xml dumps.
 #  This is very useful for processing the entire
 #  discog monthly dump, but not for extracting 1 artist.
-
-import gzip
-import xml.etree.ElementTree as ET
-from lxml import etree    # pyright: ignore [reportAttributeAccessIssue]
-import jsonlines
-from pathlib import Path
+# There's a commit, 682ec2d046e6b311b2798eaa1893f7e06e85499e which as draft
+# code for using the API. I will probably remove that code,
+# so, grab it with git if you decide you want to try something like that.
 
 class DiscogsXMLParser:
     def __init__(self, data_dir='local_data/discogs_dumps'):
