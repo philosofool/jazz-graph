@@ -1,4 +1,5 @@
 ipykernel
+jsonlines
 numpy
 pandas
 pytest

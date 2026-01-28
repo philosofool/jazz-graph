@@ -1,10 +1,10 @@
-# Jazz Graph
+# JazzWork
 
 A PyG based recommender system for jazz music.
 JazzGraph uses the network of jazz collaboration to construct recommendations.
 Where a traditional recommendation systems says
 "I like the song 'Round Midnight', could you ask other users to recommend me some Jazz?"
-JazzGraph says
+JazzWork says
 "I like the song 'Round Midnight', could you ask Theolonious Monk to recommend me some Jazz?"
 
 

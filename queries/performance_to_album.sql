@@ -23,11 +23,15 @@ WITH recording_to_album AS (
 	JOIN l_release_group_release_group ON l_release_group_release_group.entity0 = release_group.id
 	-- JOIN medium_format ON medium_format.id = medium.format
 	WHERE 
-		recording.name LIKE '%Freddie Freeloader%'
-		AND recording.artist_credit = 1954
+		-- recording.name LIKE '%Freddie Freeloader%'
+		-- AND recording.artist_credit = 1954
+		recording.artist_credit = 1954
+
+		
 		-- AND release_group.name LIKE 'Kind of Blue%'
 	-- GROUP BY release_group.id, recording.id
 	-- LIMIT 10
+	GROUP BY recording.id, release_group.id
 )
 SELECT
 	*
@@ -36,9 +40,8 @@ JOIN l_release_group_release_group as group_links ON
 	group_links.entity0 = recording_to_album.album_id
 JOIN link on link.id = group_links.link
 JOIN link_type on link_type.id = link.link_type
-WHERE performance_id != 14535669
+WHERE performance_id != 14535669;
 	
-
 
 -- SELECT * 
 -- from release_group
