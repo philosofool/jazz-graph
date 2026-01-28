@@ -1,9 +1,20 @@
 from pathlib import Path
-from jazz_graph.extract_jazz import DiscogsXMLParser
+from jazz_graph.extract_discogs import DiscogsXMLParser
 
 
 def main():
+    """Extract discogs data to jsonlines format, which is much easier to work with.
 
+    Create three files:
+    1. jazz_masters.jsonl
+        This is a listing of the master recordings and should not contain duplicates (e.g., reissues.)
+    2. jazz_releases.jsonl
+        This is the actual data associated with a master recording, there is one data entry per master.
+    3. jazz_artists.jsonl
+        This is a list of performers who appear in jazz releases, and should be deduplicated.
+    Note that the deduplication in these depends on the cleanliness of the discogs data,
+    not data cleaning steps. Discogs appears to be very clean, but duplication is possible.
+    """
     # Step 1: Parse masters.xml to get jazz albums
     parser = DiscogsXMLParser()
     masters_path = 'local_data/jazz_masters.jsonl'

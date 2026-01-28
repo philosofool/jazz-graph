@@ -3,7 +3,6 @@
 import time
 import threading
 import discogs_client
-from jazz_graph.serialize import DiscogsCache
 import gzip
 import xml.etree.ElementTree as ET
 from lxml import etree    # pyright: ignore [reportAttributeAccessIssue]
@@ -49,11 +48,12 @@ PERFORMER_ROLES: set[str] = {
 ## Parse discogs from their xml dumps.
 #  This is very useful for processing the entire
 #  discog monthly dump, but not for extracting 1 artist.
-# There's a commit, 682ec2d046e6b311b2798eaa1893f7e06e85499e which as draft
+# There's a commit, 682ec2d046e6b311b2798eaa1893f7e06e85499e which has draft
 # code for using the API. I will probably remove that code,
 # so, grab it with git if you decide you want to try something like that.
 
 class DiscogsXMLParser:
+    # CREDIT: This was written by ChatGPT with minor edits after debugging.
     def __init__(self, data_dir='local_data/discogs_dumps'):
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -148,7 +148,7 @@ class DiscogsXMLParser:
         release_ids: set of release IDs to extract (from masters)
         """
         print(f"Parsing {xml_path} for {len(release_ids)} specific releases...")
-        release_ids = set(release_ids)  # Fast lookup
+        release_ids = set(release_ids)
         found = 0
 
         with gzip.open(xml_path, 'rb') as f:
@@ -354,3 +354,8 @@ def parse_artists_debug(self, xml_path, artist_ids, output_jsonl='data/artists.j
                     break
 
     print(f"Done! Found {found} artists.")
+
+
+if __name__ == '__main__':
+    discogs_parser = DiscogsXMLParser()
+    discogs_parser.parse_masters('/workspace/local_data/discogs_20251101_masters.xml.gz', 'local_data/test_master_parse.jsonl')
