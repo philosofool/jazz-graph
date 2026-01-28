@@ -1,0 +1,9 @@
+ipykernel
+numpy
+pandas
+pytest
+matplotlib
+scikit-learn
+seaborn
+torch-geometric
+neo4j

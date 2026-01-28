@@ -1,0 +1,9 @@
+// Recordings and tracks; :Track <-:LISTS_TRACK :Recording
+CREATE (KindOfBlue:Recording, {title: 'Kind of Blue'})
+CREATE (SoWSong:Song {title: 'So What'})
+CREATE (SWTrack:Track {trackNumber: 1, title: 'So What'})
+
+CREATE (MilesD) -[:PERFORMS {instrument: 'trumpet'}]-> (SoW) -[:PERFORMING]-> (SoWSong)
+CREATE (MilesD) -[:COMPOSES]-> (SoWSong)
+CREATE (SWTrack) -[:RECORDS]-> (SoW)
+CREATE (KindOfBlue) -[:LISTS_TRACK]-> (SWTrack)
