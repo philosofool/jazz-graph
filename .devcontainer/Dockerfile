@@ -8,11 +8,14 @@ WORKDIR /workspace
 # Install system utilities
 RUN apt-get update && apt-get install -y \
     git curl vim build-essential sudo \
+    libpq-dev postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt || true
+# RUN pip install --no-cache-dir -r /tmp/requirements.txt || true
+RUN /opt/conda/bin/python -m pip install --no-cache-dir -r /tmp/requirements.txt || true
+
 
 # Create a non-root user (UID 1000 matches typical host user)
 ARG USERNAME=vscode
