@@ -1,5 +1,5 @@
 from pathlib import Path
-from jazz_graph.extract_discogs import DiscogsXMLParser
+from jazz_graph.extract_discogs import DiscogsXMLParser, prefilter_jazz
 
 
 def main():
@@ -30,7 +30,7 @@ def main():
     with jsonlines.open(masters_path, 'r') as f:
         for master in f:
             # Filter: has 'Jazz' genre
-            if 'Jazz' in master.get('genres', []):
+            if prefilter_jazz(master):
                 jazz_masters.append(master)
                 if master['main_release']:
                     main_release_ids.add(master['main_release'])

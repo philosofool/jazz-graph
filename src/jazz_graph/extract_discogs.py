@@ -1,5 +1,6 @@
 """There are a few starts her"""
 
+from collections import defaultdict
 import time
 import threading
 import discogs_client
@@ -8,6 +9,8 @@ import xml.etree.ElementTree as ET
 from lxml import etree    # pyright: ignore [reportAttributeAccessIssue]
 import jsonlines
 from pathlib import Path
+
+from jazz_graph.data_normalization import normalize_title
 
 
 PERFORMER_ROLES: set[str] = {
@@ -49,7 +52,8 @@ PERFORMER_ROLES: set[str] = {
 #  This is very useful for processing the entire
 #  discog monthly dump, but not for extracting 1 artist.
 # There's a commit, 682ec2d046e6b311b2798eaa1893f7e06e85499e which has draft
-# code for using the API. I will probably remove that code,
+# code for using the discogs API, which was too slow for large batches.
+# I will probably remove that code,
 # so, grab it with git if you decide you want to try something like that.
 
 class DiscogsXMLParser:
@@ -356,6 +360,138 @@ def parse_artists_debug(self, xml_path, artist_ids, output_jsonl='data/artists.j
     print(f"Done! Found {found} artists.")
 
 
-if __name__ == '__main__':
-    discogs_parser = DiscogsXMLParser()
-    discogs_parser.parse_masters('/workspace/local_data/discogs_20251101_masters.xml.gz', 'local_data/test_master_parse.jsonl')
+class InMemDiscogs:
+    """Read extracted discogs releases from file and hold in memory."""
+    def __init__(self, discogs_release_path: str, filter = None):
+        self.release_path = discogs_release_path
+        self._tracklist: dict[str, set] = {}
+        self._release_data: dict[int, dict] = {}
+        self._norm_title_to_release: dict[str, list] = defaultdict(list)
+        # lazy process the data, set ready to True when processed.
+        self._ready = False
+
+        self.filter = filter if filter is not None else lambda x: True
+
+    def tracklist(self) -> dict[str, set]:
+        """Return a mapping form normalized album titles to noralized track names.
+
+        Note: there may be collisions with normalized titles. In this case,
+        every title associated with that album name will be returned and the
+        set of names will be the union of tracks on all matching album titles.
+        """
+        if not self._ready:
+            self._process_releases()
+        return self._tracklist
+
+    def get_albums_matching_title(self, title: str) -> list:
+        """Return a list of all albums matching the noramlized title."""
+        if not self._ready:
+            self._process_releases()
+        norm_title = normalize_title(title)
+        release_ids = self._norm_title_to_release[norm_title]
+        return [self._release_data[id] for id in release_ids]
+
+    def _process_releases(self):
+        with jsonlines.open(self.release_path) as f:
+            for release in f:
+                if not self.filter(release):
+                    continue
+                self._update_tracklist(release)
+                self._update_release_data(release)
+        self._ready = True
+
+    def _update_tracklist(self, release: dict):
+        title = release['title']
+        norm_title = normalize_title(title)
+        tracklist = release.get('tracklist', [])
+        tracks = self._update_tracks(tracklist)
+        if norm_title in self._tracklist:
+            self._tracklist[norm_title].update(tracks)
+        else:
+            self._tracklist[norm_title] = tracks
+
+    def _update_tracks(self, tracklist: list):
+        tracks = set()
+        for track in tracklist:
+            norm_track = normalize_title(track['title'])
+            tracks.add(norm_track)
+        return tracks
+
+    def _update_release_data(self, release: dict):
+        self._release_data[release['id']] = release
+        norm_title = normalize_title(release['title'])
+        self._norm_title_to_release[norm_title].append(release['id'])
+
+
+def prefilter_jazz(release_dict: dict) -> bool:
+    """This is the minimal filter on Jazz entries.
+
+    It should be used when reading data to eliminate anything which would
+    never need more sophisticated logic for determining if it is Jazz or not.
+    The use case is, for example, iterating GBs of music data, most of which
+    is not jazz to create an intermediate data source for further use.
+    """
+    return 'Jazz' in release_dict.get('genres', [])
+
+
+def is_jazz_album(release_dict: dict) -> bool:
+    """Return true if release dict (in discog format) implies that it is jazz."""
+    # NOTE: this function is expceted to be the primary logic for
+    # extraction of jazz from discogs.
+    # TODO: implementation is work in progress, known to exclude
+    # e.g., soundtracks, christmas albums--clearcut jazz, but with additional meta-data.
+    # however, there's a lot of stuff that includes Jazz in genre which isn't.
+
+    return len(release_dict['genres']) < 2 and 'Jazz' in release_dict['genres']
+
+
+class MatchDiscogs:
+    """Handle matching data with discogs data."""
+    def __init__(self, discogs_data: InMemDiscogs):
+        self.discogs = discogs_data
+        self._cache = {}
+
+    def songs_on(self, album) -> set:
+        """Return the songs on this album."""
+        norm_album = self.normalize(album)
+        tracklist = self.discogs.tracklist()
+        matched_songs = tracklist.get(norm_album, set())
+        return matched_songs
+
+    def match_artist_album(self, album, artist) -> dict:
+        """Return the discog record matching the input artist and album title."""
+        norm_artist = self.normalize(artist)
+        norm_album = self.normalize(album)
+        album_matches = self.discogs.get_albums_matching_title(norm_album)
+        for album in album_matches:
+            artists = {self.normalize(artist['name']) for artist in album['artists']}
+            # In the extremely rare instance that that same artist produced two albums by the same name
+            # this would return the first match.
+            if norm_artist in artists:
+                return album
+        return {}
+
+    @staticmethod
+    def normalize(value: str) -> str:
+        """Normalize an input string."""
+        return normalize_title(value)
+
+    def matching_discog(self, row: list | tuple) -> dict:
+        """Get the discog record matching row data.
+
+        Returns an empty dictionary if no matchign data.
+
+        row:
+            A sequence with strings song, album artist as the first three elements.
+        """
+        song, album, artist = row[:3]
+
+        # check this matches a title and song of a jazz recording.
+        matched_songs = self.songs_on(album)
+        if not matched_songs:
+            return {}
+        song_norm = self.normalize(song)
+        if not song_norm in matched_songs:
+            return {}
+        # if so, return the matching discog record.
+        return self.match_artist_album(album, artist)
