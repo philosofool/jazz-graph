@@ -6,19 +6,17 @@ WITH compositions AS (
 		work.name as song,
 		recording.name as recording,
 		recording.artist_credit as performer_id,
-		artist.name as performer
-		
+		artist.name as composer
 		
 	FROM work 
 	JOIN l_artist_work ON work.id = l_artist_work.entity1
 	JOIN l_recording_work ON work.id = l_recording_work.entity1
-	JOIN recording ON recording.id = l_recording_work.entity0
-	JOIN artist ON artist.id = recording.artist_credit
-	WHERE
-		l_artist_work.entity0 = 1954
-		
-	LIMIT 100
+	-- JOIN recording ON recording.id = l_recording_work.entity0
+	-- JOIN artist ON artist.id = recording.artist_credit
+	JOIN artist ON artist.id = l_artist_work.entity0
 )
--- SELECT * FROM recording LIMIT 10;
-SELECT * FROM compositions;
-SELECT COUNT(*) FROM work;
+
+SELECT * FROM compositions 
+WHERE
+	composer_id = 1954
+LIMIT 100;
