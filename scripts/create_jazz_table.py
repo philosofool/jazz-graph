@@ -25,6 +25,7 @@ class ProcessRows:
         recording_id = row[3]
         if recording_id in self.seen:
             return # this recording already exists in the data, so ignore it.
+        self.seen.add(recording_id)
         data = row + (discogs_album_id, release_year)
         self.add_data(data)
 
