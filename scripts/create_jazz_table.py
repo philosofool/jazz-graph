@@ -1,9 +1,9 @@
 from functools import lru_cache
 import io
-from matplotlib.pylab import norm, normal
-from tempfile import NamedTemporaryFile
+
 import psycopg
 import pandas as pd
+
 from jazz_graph.extract_discogs import InMemDiscogs, is_jazz_album, MatchDiscogs
 
 
