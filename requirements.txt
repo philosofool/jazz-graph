@@ -1,0 +1,11 @@
+ipykernel
+jsonlines
+numpy
+pandas
+pytest
+matplotlib
+scikit-learn
+seaborn
+torch-geometric
+neo4j
+psycopg[binary]
