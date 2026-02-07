@@ -4,7 +4,7 @@ import io
 import psycopg
 import pandas as pd
 
-from jazz_graph.extract_discogs import InMemDiscogs, is_jazz_album, MatchDiscogs
+from jazz_graph.etl.extract_discogs import InMemDiscogs, is_jazz_album, MatchDiscogs
 
 
 class ProcessRows:

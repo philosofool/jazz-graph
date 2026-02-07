@@ -10,7 +10,7 @@ from lxml import etree    # pyright: ignore [reportAttributeAccessIssue]
 import jsonlines
 from pathlib import Path
 
-from jazz_graph.data_normalization import normalize_title
+from jazz_graph.normalize.data_normalization import normalize_title
 
 
 PERFORMER_ROLES: set[str] = {
