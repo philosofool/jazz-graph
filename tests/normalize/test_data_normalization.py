@@ -1,5 +1,5 @@
 import pytest
-from jazz_graph.data_normalization import normalize_title
+from jazz_graph.normalize.data_normalization import normalize_title
 
 
 @pytest.mark.parametrize('title,expected', [
