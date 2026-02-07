@@ -14,7 +14,7 @@ SELECT
 	artist.id AS artist_id,
 	recording.id AS recording_id,
 	artist.name AS artist_name,
-	recording.name AS sONg_name,
+	recording.name AS song_name,
 	link_attribute_type.name AS instrument
 FROM
 	l_artist_recording
