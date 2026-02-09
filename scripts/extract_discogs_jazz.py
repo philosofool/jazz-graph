@@ -1,5 +1,5 @@
 from pathlib import Path
-from jazz_graph.extract_discogs import DiscogsXMLParser, prefilter_jazz
+from jazz_graph.etl.extract_discogs import DiscogsXMLParser, prefilter_jazz
 
 
 def main():

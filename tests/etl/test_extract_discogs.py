@@ -1,4 +1,4 @@
-from jazz_graph.normalize.data_normalization import normalize_title
+from jazz_graph.clean.data_normalization import normalize_title
 from jazz_graph.etl.extract_discogs import InMemDiscogs, MatchDiscogs
 
 
