@@ -1,11 +1,13 @@
+fastparquet
 ipykernel
 jsonlines
+matplotlib
+neo4j
 numpy
 pandas
+psycopg[binary]
+pyarrow
 pytest
-matplotlib
 scikit-learn
 seaborn
 torch-geometric
-neo4j
-psycopg[binary]

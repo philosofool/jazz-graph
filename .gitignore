@@ -126,3 +126,5 @@ local_data/
 .env
 *.vdb
 *.zip
+
+notebooks/sandbox.ipynb

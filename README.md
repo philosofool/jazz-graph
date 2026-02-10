@@ -1,7 +1,7 @@
 # JazzGraph
 
-_JazzGraph_ is a recommender system for using expert judgment to make music recommendations. 
-It uses the relationships of musical collaboration among jazz artists to encode similarity relations among performances and leverages those similarity relationships to make recommendations. 
+_JazzGraph_ is a recommender system for using expert judgment to make music recommendations.
+It uses the relationships of musical collaboration among jazz artists to encode similarity relations among performances and leverages those similarity relationships to make recommendations.
 The model of similarity is a graph neural network.
 
 Think of JazzGraph as the following: rather than ask other music listeners what songs to listen to, ask Thelonious Monk.
