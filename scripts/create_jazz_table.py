@@ -1,10 +1,10 @@
-"""Create a table in musicbrainz db with Jazz recordings in it."""
-# TODO: This is pretty messy and not normalized.
-# It would be better to:
-# Write a junction table (recording_id, discog_id) and a table discogs_releases.
-# This is just standard normalization practice and a fairly obvious step.
-# The intermediate table that is created here should be a materialized view
-# of relevant joins.
+"""Create a table in musicbrainz db with Jazz recordings in it.
+
+This script adds
+    discogs_release
+    discogs_release_to_recording
+to musicbrainz db.
+"""
 
 import psycopg
 import pandas as pd
@@ -13,6 +13,7 @@ from jazz_graph.etl.extract_discogs import InMemDiscogs, is_jazz_album, MatchDis
 from jazz_graph.etl.load import LoadData
 from jazz_graph.schema.sql import Column, ForeignKey, PrimaryKey, TableSchema
 from jazz_graph.clean.string_date import date_precision, clean_string_date
+from jazz_graph.clean.data_normalization import normalize_title
 
 
 class ProcessRows:
@@ -27,11 +28,11 @@ class ProcessRows:
         # album to associate with the recording. BUT we're not yet concerned
         # with albums. The main data model is performance, musician, song.
 
-        # row = (song, album, artist, recording_id, album_id, release_year, release_month, release_day)
+        # row = (recording_id, release_group_id, song, album, artist, release_date)
         discogs_album_id = matching['id']
         release_year = matching['released']
         styles = matching['styles']
-        recording_id = row[3]
+        recording_id = row[0]
         if recording_id in self.seen:
             return # this recording already exists in the data, so ignore it.
         self.seen.add(recording_id)
@@ -44,7 +45,7 @@ class ProcessRows:
     def dataframe(self) -> pd.DataFrame:
         df = pd.DataFrame.from_records(
             self.data,
-            columns=['recording_id', 'album_id', 'song', 'album', 'artist', 'release_year', 'release_month', 'release_day', 'discog_album_id', 'discog_date', 'styles']
+            columns=['recording_id', 'release_group_id', 'song', 'album', 'artist', 'release_date', 'discog_album_id', 'discog_date', 'styles']
         )
         return df
 
@@ -59,24 +60,12 @@ class Schemas:
             'discogs_release',
             [
                 Column('id', 'INT', nullable=False, is_identity=False),
-                Column('title', 'TEXT'),
-                Column('release_date', 'DATE'),
-                Column('date_precision', 'TEXT')
+                Column('title', 'TEXT'),  # album title, as in Discogs.
+                Column('release_date', 'DATE'),  # release date, acc. to discogs.
+                Column('date_precision', 'TEXT')  # Dates are the latest possible date compatible with available information.
             ],
             PrimaryKey(['id'], 'discogs_release_pk', False),
             []
-        )
-        self.styles = TableSchema(
-            'styles',
-            [Column('id', 'INT', False, is_identity=True), Column('style_name', 'TEXT', False)],
-            PrimaryKey(['id'], 'styles_pk', True),
-            []
-        )
-        self.styles_to_discogs = TableSchema(
-            'styles_to_discogs',
-            [Column('style_id', 'INT', False), Column('discog_id', 'INT')],
-            PrimaryKey(['style_id', 'discogs_id']),
-            [ForeignKey(['discogs_id'], ['id'], 'discogs_release')]
         )
         self.recordings_to_discogs = TableSchema(
             'discogs_release_to_recording',
@@ -90,11 +79,23 @@ class Schemas:
                 ForeignKey(['discogs_id'], ['id'], 'discogs_release')
             ]
         )
+        self.styles = TableSchema(
+            'styles',
+            [Column('id', 'INT', False, is_identity=True), Column('style_name', 'TEXT', False)],
+            PrimaryKey(['id'], 'styles_pk', True),
+            []
+        )
+        self.styles_to_discogs = TableSchema(
+            'styles_to_discogs',
+            [Column('style_id', 'INT', False), Column('discog_id', 'INT')],
+            PrimaryKey(['style_id', 'discogs_id']),
+            [ForeignKey(['discogs_id'], ['id'], 'discogs_release')]
+        )
 
 
 def create_jazz_data() -> pd.DataFrame:
-    # query = read_text_file('/workspace/queries/recording_to_album.sql')
-    query = "SELECT * FROM recording_to_album;"
+    """Extract first release data and match against known discogs data."""
+    query = "SELECT * FROM recording_first_release;"
     discogs = MatchDiscogs(InMemDiscogs('/workspace/local_data/jazz_releases.jsonl', is_jazz_album))
     process_rows = ProcessRows()
     with psycopg.connect("dbname=musicbrainz_db user=philosofool") as conn:
@@ -118,39 +119,63 @@ def create_jazz_data() -> pd.DataFrame:
     return process_rows.dataframe()
 
 
-def create_jazz_table(discogs_data: pd.DataFrame, schema: TableSchema):
-    # schema = Schemas().discogs_releases
-    with psycopg.connect("dbname=musicbrainz_db user=philosofool") as conn:
-
-        cursor = conn.cursor()
-        load_data = LoadData(schema)
-        load_data.create_table(cursor, True)
-        load_data.load_data(discogs_data, cursor)
-        cursor.close()
-
-        cursor = conn.cursor(name="my_streaming_cursor")
-        cursor.execute(f"SELECT * FROM {schema.name} LIMIT 3")
-        for row in cursor:
-            print(row)
-        cursor.close()
-
-
 def data_to_discogs_schema(df: pd.DataFrame):
     """Transform jazz_data output for loading according to discogs_release schema."""
-    selected_columns = ['discog_album_id', 'song', 'discog_date']
+    # TODO: this should be driven by a schema.
+    selected_columns = ['discog_album_id', 'album', 'discog_date']
     df = df[selected_columns]
     df['date_precision'] = date_precision(df['discog_date'])
     df['discog_date'] = clean_string_date(df['discog_date'])
-    return df
+    return df.drop_duplicates(subset='discog_album_id')
 
 def data_to_recording_discog(jazz_data: pd.DataFrame):
+    """Transform jazz_Data output for loading according to recording_to_discogs schema."""
+    # TODO: this should be driven by a schema.
     jazz_data = jazz_data[['recording_id', 'discog_album_id']]
     print(f"Dropping {jazz_data.duplicated().sum()} duplicated entries.")
     jazz_data = jazz_data.drop_duplicates()
     return jazz_data
 
+def normalize_columns(df, columns: list) -> pd.DataFrame:
+    """Apply normalize_title to df columns."""
+    df = df.copy()
+    for column in columns:
+        normalized = df[column].apply(normalize_title)
+        df[f"{column}_normalized"] = normalized
+    return df
+
+def deduplicate(df: pd.DataFrame):
+    """Deduplicate records in jazz_data."""
+    orig_columns = df.columns.to_list()
+    df = normalize_columns(df, ['artist', 'song', 'album'])
+    print(df.columns)
+    df = (
+        df
+        .sort_values('release_date')
+        .drop_duplicates(
+            subset=['artist_normalized', 'song_normalized', 'album_normalized'])
+        .drop(columns=['artist_normalized', 'song_normalized', 'album_normalized'])
+    )
+    return df
+
+def test_deduplicate():
+    """This is just a test, but the code in here isn't in scr, so we just test here."""
+    df = pd.DataFrame({
+        'song': ['One', 'One (5.0 Mix)', 'Two'],
+        'album': ['three', 'three', 'four'],
+        'artist': ['Foo', 'Foo', 'Bar'],
+        'release_date': [1, 0, 2]
+    })
+    dedup = deduplicate(df)
+    assert len(dedup) == 2, "Should drop one duplicated."
+    assert 0 in df.release_date.values, "Should keep the entry with the smallest release date."
+    assert 'Bar' in dedup.artist.values, "This data should not be one of the dropped rows."
+    assert not any(('_norm' in col for col in dedup.columns)), "Should drop normalized columns."
+
+
 
 if __name__ == '__main__':
+    test_deduplicate()
     jazz_data_path = '/workspace/local_data/jazz_data_discogs.csv'
     try:
         jazz_data = pd.read_csv(jazz_data_path)
@@ -160,42 +185,35 @@ if __name__ == '__main__':
         jazz_data = create_jazz_data()
         jazz_data.to_csv(jazz_data_path, index=False)
 
-    print(jazz_data.head())
-    jazz_styles = jazz_data.styles.explode()
-    jazz_styles = pd.DataFrame(jazz_styles, index=jazz_styles.index, columns=['styles'])
-    jazz_styles = jazz_styles.merge(jazz_data.discog_album_id, left_index=True, right_index=True, how='left')
-    print(jazz_sytles.head())
-
-
-    # create styles in db:
+    jazz_data = deduplicate(jazz_data)
 
     # TODO: Maybe--load styles to DB.
+    # jazz_styles = jazz_data.styles.explode()
+    # jazz_styles = pd.DataFrame(jazz_styles, index=jazz_styles.index, columns=['styles'])
+    # jazz_styles = jazz_styles.merge(jazz_data.discog_album_id, left_index=True, right_index=True, how='left')
+    # print(jazz_styles.head())
     # jazz_styles_data = pd.DataFrame([jazz_styles.styles.unique()], columns=['styles'])
     # styles_loader = LoadData(Schemas().styles)
 
+
     discogs_jazz = data_to_discogs_schema(jazz_data)
-    load_discogs = LoadData(Schemas().discogs_releases)
+    print(discogs_jazz.head(20))
+    discogs_jazz_loader = LoadData(Schemas().discogs_releases)
 
     # TODO: Maybe--create_styles_to_discogs
     # TODO: double check column order.
     # LoadData(Schema().styles_to_discogs).load_data(jazz_styles_data)
 
-    recording_to_discog_data = data_to_recording_discog(jazz_data)
-    load_recording_to_discog = LoadData(Schemas().recordings_to_discogs)
+    recording_to_discogs_data = data_to_recording_discog(jazz_data)
+    recording_to_discog_loader = LoadData(Schemas().recordings_to_discogs)
 
     with psycopg.connect("dbname=musicbrainz_db user=philosofool") as conn:
         conn.autocommit = False
         cursor = conn.cursor()
-        # create_discogs_jazz
 
-        load_discogs.create_table(cursor)
-        load_discogs.load_data(discogs_jazz, cursor)
+        discogs_jazz_loader.create_table(cursor)
+        discogs_jazz_loader.load_data(discogs_jazz, cursor)
 
-        load_recording_to_discog.create_table(cursor)
-        load_recording_to_discog.load_data(recording_to_discog_data, cursor)
+        recording_to_discog_loader.create_table(cursor)
+        recording_to_discog_loader.load_data(recording_to_discogs_data, cursor)
         conn.commit()
-
-
-    #     # create recordings_to_discogs
-    #     # ...filter data to correct columns.
-    #     LoadData(Schema().recordings_to_discogs).load_data(...)

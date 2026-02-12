@@ -14,14 +14,17 @@ class CreateNodeData:
         self.transforms = transforms
 
     def extract(self, connection) -> pd.DataFrame:
+        """Return data from query."""
         return  _read_sql(connection, self.sql)
 
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Apply transforms to data."""
         for transform in self.transforms:
             df = transform(df)
         return df
 
     def extract_transform(self, connection) -> pd.DataFrame:
+        """Convenience method: extracts data and applies transforms."""
         return self.transform(self.extract(connection))
 
 
@@ -43,11 +46,14 @@ def map_by_index(arr):
     return out
 
 def create_tables():
+    """This function extracts data from SQL, transforms to node arrays and edge arrays,
+    as parquet tables.
+    """
     arist_sql = """
         SELECT
             artist_id
         FROM jazz_recordings
-        JOIN recording_to_performer ON recording_to_performer.recording_id = jazz_recordings.recording
+        JOIN recording_to_performer ON recording_to_performer.recording_id = jazz_recordings.recording_id
         GROUP BY artist_id
         UNION
         SELECT composer_id as artist_id
@@ -58,45 +64,46 @@ def create_tables():
         SELECT
             work_id
         FROM compositions
-        JOIN jazz_recordings ON compositions.recording_id = jazz_recordings.recording
+        JOIN jazz_recordings ON compositions.recording_id = jazz_recordings.recording_id
         GROUP BY
             work_id;
     """
     performance_sql = """
         SELECT
-            recording,
-            MIN(discogs_release) as discogs_release
+            recording_id,
+            discogs_id as discogs_id
         FROM jazz_recordings
-        GROUP BY recording
     """
     performance_song_sql = """
         SELECT
-            jazz_recordings.recording,
+            jazz_recordings.recording_id,
             compositions.work_id
         FROM jazz_recordings
-        JOIN compositions ON compositions.recording_id = jazz_recordings.recording
-        GROUP BY (jazz_recordings.recording, compositions.work_id)
+        JOIN compositions ON compositions.recording_id = jazz_recordings.recording_id
+        -- GROUP BY (jazz_recordings.recording_id, compositions.work_id)
     """
     performance_artist_sql = """
         SELECT
-            jazz_recordings.recording,
+            jazz_recordings.recording_id,
             recording_to_performer.artist_id
         FROM
             jazz_recordings
         JOIN
-            recording_to_performer ON jazz_recordings.recording = recording_to_performer.recording_id
+            recording_to_performer ON jazz_recordings.recording_id = recording_to_performer.recording_id
     """
     song_artist_sql = """
         SELECT
             composer_id as artist,
             work_id as song
         FROM compositions
-        JOIN jazz_recordings ON jazz_recordings.recording = compositions.recording_id
-        GROUP BY (composer_id, work_id)
+        JOIN jazz_recordings ON jazz_recordings.recording_id = compositions.recording_id
+        -- GROUP BY (composer_id, work_id)
     """
+
     def merge_labels(performance_nodes:pd.DataFrame) -> pd.DataFrame:
+        """Merges the styles data to perfromance nodes."""
         performance_labels = pd.read_parquet('/workspace/local_data/discogs_styles.parquet')
-        return performance_nodes.merge(performance_labels, left_on='discogs_release', right_index=True, how='left')
+        return performance_nodes.merge(performance_labels, left_on='discogs_id', right_index=True, how='left')
 
     create_artist_nodes = CreateNodeData(
         arist_sql, [lambda df: df.set_index('artist_id')]
@@ -104,7 +111,7 @@ def create_tables():
     create_song_nodes = CreateNodeData(song_sql, [lambda df: df.set_index('work_id')])
     create_performance_nodes = CreateNodeData(
         performance_sql,
-        [lambda df: df.set_index('recording'), merge_labels, lambda df: df.drop(columns=['discogs_release'])])
+        [lambda df: df.set_index('recording_id'), merge_labels, lambda df: df.drop(columns=['discogs_id'])])
 
     with psycopg.connect("dbname=musicbrainz_db user=philosofool") as connection:
         artist_data = create_artist_nodes.extract_transform(connection)
@@ -120,14 +127,14 @@ def create_tables():
             [
                 lambda df: df.assign(
                     artist_id=map_array(df.artist_id, artist_lookup),
-                    recording=map_array(df.recording, performance_lookup))
+                    recording_id=map_array(df.recording_id, performance_lookup))
             ]
         ).extract_transform(connection)
 
         performance_song_data = CreateNodeData(
             performance_song_sql,
             [lambda df: df.assign(
-                recording=map_array(df.recording, performance_lookup),
+                recording_id=map_array(df.recording_id, performance_lookup),
                 work_id=map_array(df.work_id, song_lookup)
             )]
         ).extract_transform(connection)
@@ -175,76 +182,6 @@ def _read_parquet(filename, directory) -> pd.DataFrame:
     path = os.path.join(directory, filename)
     return pd.read_parquet(path)
 
-
-
-def create_artist_nodes(connection):
-    sql = """
-    SELECT
-        recording_to_performer.artist_id
-    FROM jazz_recordings
-    JOIN recording_to_performer ON recording_to_performer.recording_id = jazz_recordings.recording
-    GROUP BY artist_id;
-    """
-    df = _read_sql(connection, sql, )
-
-    ...
-    _write_parquet(df, 'artist_nodes.parquet')
-
-def create_song_nodes(connection):
-    sql = """
-    SELECT
-        work_id
-    FROM compositions
-    JOIN jazz_recordings ON compositions.recording_id = jazz_recordings.recording
-    GROUP BY
-        work_id;
-    """
-    df = _read_sql(connection, sql)
-
-    _write_parquet(df, 'song_nodes.parquet')
-
-def create_performance_nodes(connection):
-    sql = """
-    SELECT
-        recording
-    FROM jazz_recordings
-    GROUP BY recording
-    """
-    _read_sql(connection, sql)
-
-def create_performance_artist_edges(connection):
-    sql = """
-    SELECT
-        jazz_recordings.recording,
-        recording_to_performer.artist_id
-    FROM
-        jazz_recordings
-    JOIN
-        recording_to_performer ON jazz_recordings.recording = recording_to_performer.recording_id
-    """
-    _read_sql(connection, sql)
-
-def create_performance_song_edges(connection):
-    sql = """
-    SELECT
-        jazz_recordings.recording,
-        compositions.work_id
-    FROM jazz_recordings
-    JOIN compositions ON compositions.recording_id = jazz_recordings.recording
-    GROUP BY (jazz_recordings.recording, compositions.work_id)
-    """
-    _read_sql(connection, sql)
-
-def create_song_artist_edges(connection):
-    sql = """
-    SELECT
-        composer_id as artist,
-        work_id as song
-    FROM compositions
-    JOIN jazz_recordings ON jazz_recordings.recording = compositions.recording_id
-    GROUP BY (composer_id, work_id)
-    """
-    _read_sql(connection, sql)
 
 if __name__ == '__main__':
     create_tables()
