@@ -21,7 +21,7 @@ class PrimaryKey:
 
     def constraint_sql(self, table: 'TableSchema'):
         if len(self.columns) == 1:
-            pkey = self.columns[0]
+            pkey = f'({self.columns[0]})'
         elif len(self.columns):
             pkey = f"({','.join([key for key in self.columns])})"
         else:
@@ -62,6 +62,7 @@ class TableSchema:
         CREATE TABLE {self.name} (
             {cols_sql},
             {self._primary_key_sql()}
+            {',' if self.foreign_keys else ''}
             {fk_constraints}
         );
         """
@@ -86,4 +87,4 @@ class TableSchema:
         return self.primary_key.constraint_sql(self)
 
     def _foreign_key_sql(self):
-        return '\n'.join([fk.constraint_sql(self) for fk in self.foreign_keys])
+        return ',\n'.join([fk.constraint_sql(self) for fk in self.foreign_keys])
