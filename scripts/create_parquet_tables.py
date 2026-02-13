@@ -71,7 +71,8 @@ def create_tables():
     performance_sql = """
         SELECT
             recording_id,
-            discogs_id as discogs_id
+            discogs_id as discogs_id,
+            release_date
         FROM jazz_recordings
     """
     performance_song_sql = """
