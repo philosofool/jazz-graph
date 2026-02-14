@@ -7,6 +7,8 @@ import numpy as np
 from numpy.typing import ArrayLike
 import psycopg
 
+from jazz_graph.etl.transforms import map_array
+from jazz_graph.etl.transforms import map_by_index
 
 class CreateNodeData:
     """Handle extraction and transformation of node data."""
@@ -28,24 +30,6 @@ class CreateNodeData:
     def extract_transform(self, connection) -> pd.DataFrame:
         """Convenience method: extracts data and applies transforms."""
         return self.transform(self.extract(connection))
-
-
-def map_array(arr: ArrayLike, mapping: dict):
-    """Map the values in a 1d-array."""
-    series = pd.Series(arr)  # pyright: ignore [reportCallIssue, reportArgumentType]
-    return series.map(mapping).values
-
-def map_by_index(arr):
-    """Create a dictionary mapping values in arr to their index in arr.
-
-    Raises a value error if elements of arr are not unique.
-    """
-    out = {}
-    for i, v in enumerate(arr):
-        if v in out:
-            raise ValueError("The values in arr must be unique.")
-        out[v] = i
-    return out
 
 
 SQL = namedtuple('SQL', [
