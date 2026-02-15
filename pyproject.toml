@@ -14,11 +14,8 @@ license = { text = "MIT" }
 # Specify your Python compatibility
 requires-python = ">=3.10"
 
-# Dependencies installed automatically
 dependencies = [
     "numpy>=1.26",
-    "torch>=2.8",
-    "torch-geometric",
     "pandas",
     "pandera"
 ]
@@ -29,6 +26,10 @@ include-package-data = true
 
 [project.optional-dependencies]
 dev = ["pytest", "flake8", "jupyter"]
+torch = [
+    "torch>=2.8",
+    "torch-geometric"
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
