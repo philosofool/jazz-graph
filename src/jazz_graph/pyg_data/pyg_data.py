@@ -49,6 +49,11 @@ class CreateTensors:
             self._labels = self._labels[cols].copy()
         return torch_values(self._labels)
 
+    def label_names(self) -> list:
+        if not hasattr(self, '_labels'):
+            self.labels()
+        return self._labels.columns.to_list()
+
     def _mask_slices(self, seed=42) -> tuple:
         # NOTE: this is not probably best for the final version.
         # I'm simiplifying for the prototype.
