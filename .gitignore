@@ -126,3 +126,6 @@ local_data/
 .env
 *.vdb
 *.zip
+
+notebooks/sandbox.ipynb
+tests/test_pyg_data
