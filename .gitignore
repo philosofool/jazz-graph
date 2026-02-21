@@ -128,4 +128,5 @@ local_data/
 *.zip
 
 notebooks/sandbox.ipynb
+notebooks/experiments/
 tests/test_pyg_data
