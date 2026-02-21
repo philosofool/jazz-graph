@@ -1,4 +1,4 @@
-from jazz_graph.schema.sql import Column, ForeignKey, PrimaryKey, TableSchema
+from jazz_graph.data.schema.sql import Column, ForeignKey, PrimaryKey, TableSchema
 import re
 
 def test_column():

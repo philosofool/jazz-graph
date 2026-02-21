@@ -30,6 +30,7 @@ torch = [
     "torch>=2.8",
     "torch-geometric"
 ]
+discogs = ["lxml", "discogs-client"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

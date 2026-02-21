@@ -11,7 +11,7 @@ import pandas as pd
 
 from jazz_graph.etl.extract_discogs import InMemDiscogs, is_jazz_album, MatchDiscogs
 from jazz_graph.etl.load import LoadData
-from jazz_graph.schema.sql import Column, ForeignKey, PrimaryKey, TableSchema
+from jazz_graph.data.schema.sql import Column, ForeignKey, PrimaryKey, TableSchema
 from jazz_graph.clean.string_date import date_precision, clean_string_date
 from jazz_graph.clean.data_normalization import normalize_title
 

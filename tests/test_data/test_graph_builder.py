@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import torch
-from jazz_graph.pyg_data.pyg_data import torch_values, torch_index, CreateTensors
+from jazz_graph.data.graph_builder import torch_values, torch_index, CreateTensors
 
 def test_torch_values():
     df = pd.DataFrame({'a': [1., 2., 3], 'b': [4., 5., 6.]})
