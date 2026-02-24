@@ -1,10 +1,12 @@
 import os
 
+from networkx import min_edge_cover
 import numpy as np
 import pandas as pd
 import torch
 import torch_geometric
 from torch_geometric.data import HeteroData
+from torch_geometric.utils import degree
 
 
 class CreateTensors:
@@ -115,3 +117,33 @@ def torch_index(df: pd.DataFrame) -> torch.Tensor:
         assert len(data.shape) == 1
         data = data.reshape(-1, 1)
     return torch.tensor(data)
+
+def prune_island_nodes(data: HeteroData):
+    """Remove all nodes with degree 0."""
+    node_types, edge_types = data.metadata()
+    masks = mask_node_degree(data, min_degree=1)
+    out = HeteroData()
+    for node_type in node_types:
+        node_data = data[node_type]
+        for key, value in node_data.items():
+            mask = masks[node_type]
+            value = value[mask]
+            out[node_type][key] = value
+    for edge_type in edge_types:
+        edge = data[edge_type]
+        for k, v in edge.items():
+            out[edge_type][k] = v
+    return out
+
+def mask_node_degree(data: HeteroData, min_degree=1):
+    node_types, edge_types = data.metadata()
+    seen_relations = set()
+    total_degrees = {node_type: torch.zeros(data[node_type].num_nodes, dtype=torch.bool) for node_type in node_types}
+    for edge_type in edge_types:
+        src, _, dst = edge_type
+        edge = data[edge_type].edge_index
+        n_src_nodes = data[src].num_nodes
+        total_degrees[src] = total_degrees[src] + degree(edge[0], num_nodes=n_src_nodes)
+        n_dst_nodes = data[dst].num_nodes
+        total_degrees[dst] = total_degrees[dst] + degree(edge[1], num_nodes=n_dst_nodes)
+    return {k: v >= min_degree for k, v in total_degrees.items()}
