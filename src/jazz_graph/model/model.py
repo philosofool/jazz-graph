@@ -48,7 +48,7 @@ class JazzModel(nn.Module):
 
         self.performance_embed = nn.Embedding(num_performances, embed_dim)
         self.song_embed = nn.Embedding(num_songs, embed_dim)
-        self.artist_embded = nn.Embedding(num_artists, embed_dim)
+        self.artist_embed = nn.Embedding(num_artists, embed_dim)
 
         self.gnn = GNNModel(hidden_dim, embed_dim, metadata, dropout)
 
@@ -56,7 +56,7 @@ class JazzModel(nn.Module):
     def forward(self, x_dict, edge_dict) -> torch.Tensor:
         x_dict = {
             'performance': self.performance_embed(x_dict['performance'].view(-1)),
-            'artist': self.artist_embded(x_dict['artist'].view(-1)),
+            'artist': self.artist_embed(x_dict['artist'].view(-1)),
             'song': self.song_embed(x_dict['song'].view(-1))
         }
 
