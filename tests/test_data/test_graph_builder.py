@@ -1,7 +1,9 @@
 import pandas as pd
 import numpy as np
+import pytest
 import torch
-from jazz_graph.data.graph_builder import torch_values, torch_index, CreateTensors
+from jazz_graph.data.graph_builder import nodes_with_degree, mask_node_degree, torch_values, torch_index, CreateTensors
+from torch_geometric.data import HeteroData
 
 def test_torch_values():
     df = pd.DataFrame({'a': [1., 2., 3], 'b': [4., 5., 6.]})
@@ -112,3 +114,58 @@ class TestCreateTensors:
         result = create.labels()
         expected = np.array([[0, 0, 1], [1, 0, 1], [0, 1, 1]]).T
         np.testing.assert_array_equal(result, expected)
+
+@pytest.fixture
+def hetero_data() -> HeteroData:
+    data = HeteroData()
+    data['artist'].x = torch.tensor([0, 1, 2, 3])
+    data['song'].x = torch.tensor([10, 11])
+    data['performance'].x = torch.tensor([20, 21, 22, 23, 24])
+
+    data['artist', 'performs', 'performance'].edge_index = torch.tensor([
+        [1,   1,  2,  2,  2],  # zero and three missing.
+        [0, 1, 0, 1, 2]   # 23 and 24 missing.
+    ])
+    data['performance', 'performing', 'song'].edge_index = torch.tensor([
+        [0, 1, 2, 3], # 24 missing; 23 is not an island (but has no performer info)
+        [0, 0, 1, 1]  # no song islands
+    ])
+    data['artist', 'composed', 'song'].edge_index = torch.tensor([
+        [0, 1],  # zero is not an island: only composes. Three is an island.
+        [0, 1]
+    ])
+
+    data['performance'].y = torch.tensor([1, 2, 3, 4, 5]) / 10
+    return data
+
+
+def test_nodes_with_degree(hetero_data, min_degree=1):
+    data = hetero_data
+    result = nodes_with_degree(data)
+
+    assert torch.all(result['artist'].x == torch.tensor([0, 1, 2]))
+    assert torch.all(result['song'].x == torch.tensor([10, 11]))
+    assert torch.all(result['performance'].x == torch.tensor([20, 21, 22, 23]))
+    assert torch.all(result['performance'].y == torch.tensor([1, 2, 3, 4]) / 10)
+
+    expected_edges = hetero_data.metadata()[1]
+    assert expected_edges == result.metadata()[1]
+    for edge_type in expected_edges:
+        edge = result[edge_type]
+        for key, result_value in edge.items():
+            expected_value = data[edge_type][key]
+            assert torch.all(expected_value == result_value)
+
+
+
+def test_mask_node_degree(hetero_data):
+    result = mask_node_degree(hetero_data, min_degree=1)
+    # assert torch.all(result['artist'] == torch.tensor([0, 0, 0, 1]))
+    # assert torch.all(result['performance'] == torch.tensor([0, 0, 0, 0, 1]))
+    # assert torch.all(result['song'] ==  torch.tensor([0, 0]))
+    assert torch.all(result['artist'] == torch.tensor([1, 1, 1, 0]))
+    assert torch.all(result['performance'] == torch.tensor([1, 1, 1, 1, 0]))
+    assert torch.all(result['song'] ==  torch.tensor([1, 1]))
+
+    result = mask_node_degree(hetero_data, min_degree=2)
+    assert torch.all(result['artist'] ==  torch.tensor([0, 1, 1, 0])), "Artist 3 is an island, artist 0 has one composition edge."
