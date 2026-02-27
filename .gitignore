@@ -121,7 +121,10 @@ Thumbs.db
 Thumbs.db
 
 # local data files, etc.
-data/
-notebooks/gan_tuning
+
 local_data/
+.env
 *.vdb
+*.zip
+
+notebooks/sandbox.ipynb
