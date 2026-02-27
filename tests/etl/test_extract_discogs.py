@@ -1,5 +1,5 @@
-from jazz_graph.data_normalization import normalize_title
-from jazz_graph.extract_discogs import InMemDiscogs, MatchDiscogs
+from jazz_graph.clean.data_normalization import normalize_title
+from jazz_graph.etl.extract_discogs import InMemDiscogs, MatchDiscogs
 
 
 class TestInMemDiscogs:
@@ -39,17 +39,17 @@ class TestMatchDiscogs:
 
     def test_match_discogs(self):
         match_discogs = MatchDiscogs(InMemDiscogs(self.path))
-        row = ("Sly", "Head Hunters", "Herbie Hancock")
+        row = (1, 2, "Sly", "Head Hunters", "Herbie Hancock")
         result = match_discogs.matching_discog(row)
         assert result['id'] == 31381, "This should match Herbie Hancock's artist id in the data."
 
-        row = ("It's Herbie Hancock", "Head Hunters", "Chris Farley")
+        row = (1, 2, "It's Herbie Hancock", "Head Hunters", "Chris Farley")
         result = match_discogs.matching_discog(row)
         assert result['id'] == 111111, "This should match the surprise entry by Chris Farley"
 
-        row = ("Sly", "Head Hunters", "Someone I've never heard of")
+        row = (1, 2, "Sly", "Head Hunters", "Someone I've never heard of")
         result = match_discogs.matching_discog(row)
         assert result == {}, "An album with a known name and known song by an unknown artist should be an empty record."
 
-        row = ("Superunknown", "Superunknown", "Soundgarden")
+        row = (1, 2, "Superunknown", "Superunknown", "Soundgarden")
         assert match_discogs.matching_discog(row) == {}, "A row that matches nothing in the data should return an empty record."

@@ -10,7 +10,7 @@ from lxml import etree    # pyright: ignore [reportAttributeAccessIssue]
 import jsonlines
 from pathlib import Path
 
-from jazz_graph.data_normalization import normalize_title
+from jazz_graph.clean.data_normalization import normalize_title
 
 
 PERFORMER_ROLES: set[str] = {
@@ -484,7 +484,7 @@ class MatchDiscogs:
         row:
             A sequence with strings song, album artist as the first three elements.
         """
-        song, album, artist = row[:3]
+        song, album, artist = row[2:5]
 
         # check this matches a title and song of a jazz recording.
         matched_songs = self.songs_on(album)

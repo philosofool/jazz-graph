@@ -1,5 +1,5 @@
 from pathlib import Path
-from jazz_graph.extract_discogs import DiscogsXMLParser, prefilter_jazz
+from jazz_graph.etl.extract_discogs import DiscogsXMLParser, prefilter_jazz
 
 
 def main():
@@ -75,21 +75,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    # import os
-    # from jazz_graph.serialize import DiscogsCache
-    # cache = DiscogsCache()
-    # discog_api_key = os.environ.get('DISCOG_API_KEY')
-    # if discog_api_key is None:
-    #     raise Exception("Unable to load DISCOG_API_KEY from environment.")
-    # client = RateLimitedClient('JazzWork-nn/0.1', user_token=discog_api_key)
-    # john_coltrane = client.artist(97545)
-    # blue_train = client.release(3022494)
-
-    # assert john_coltrane.name == "John Coltrane"
-    # assert blue_train.title == "Blue Train"
-    # artists, releases = extract_jazz([], [blue_train], cache)
-
-    # artists, releases = extract_jazz([john_coltrane], [])
-
-    # discog_parser = DiscogsXMLParser()
-    # discog_parser.parse_masters('local_data/discogs_20251101_masters.xml.gz', n_records=10)

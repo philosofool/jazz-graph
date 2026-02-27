@@ -2,7 +2,7 @@ from collections import Counter
 import jsonlines
 import pandas as pd
 from sklearn.preprocessing import MultiLabelBinarizer
-from jazz_graph.extract_discogs import is_jazz_album
+from jazz_graph.etl.extract_discogs import is_jazz_album
 
 
 def get_subgenres(path_to_releases) -> tuple[list[int], list[list], Counter]:
