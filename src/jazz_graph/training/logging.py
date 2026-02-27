@@ -12,6 +12,7 @@ import torch
 if TYPE_CHECKING:
     from torch_geometric.loader import LinkNeighborLoader
     from ignite.engine import Engine
+    from jazz_graph.model.model import NodeClassifier, LinkPredictionModel, JazzModel
 
 # Thanks to ChatGPT for creating this.
 
@@ -25,7 +26,7 @@ def get_git_commit():
         return None
 
 
-class JSONRunLogger:
+class ExperimentLogger:
     """Log experiment runs."""
     def __init__(self, root="experiments", run_name=None, config=None):
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -59,18 +60,46 @@ class JSONRunLogger:
         path = ckpt_dir / name
         torch.save(model.state_dict(), path)
 
+    def save_embeddings(self, model: NodeClassifier | LinkPredictionModel):
+        base_model: JazzModel = model.base_model
 
-def run_evaluator(trainer, evaluator:Engine, loader: LinkNeighborLoader, step_name: str, verbose=True):
+        # Save embeddings as tensors
+        torch.save({
+            'performance': base_model.performance_embed.cpu(),
+            'artist': base_model.artist_embed.cpu(),
+            'song': base_model.song_embed.cpu(),
+        }, self.run_dir / "embeddings.pt")
+
+        # Save node ID mappings (critical for recommendations!)
+        metadata = {
+            'num_performances': base_model.performance_embed.weight.shape[0],
+            'num_artists': base_model.artist_embed.weight.shape[0],
+            'num_songs': base_model.song_embed.weight.shape[0],
+            'embedding_dim': base_model.performance_embed.weight.shape[1],
+        }
+
+        with open(self.run_dir / "metadata.json", 'w') as f:
+            json.dump(metadata, f, indent=2)
+
+        print(f"Saved embeddings to {self.run_dir}")
+
+
+def run_evaluator_handler(trainer: Engine, evaluator: Engine, loader: LinkNeighborLoader):
     evaluator.run(loader)
-    if verbose:
-        metrics = evaluator.state.metrics
-        print(f"{step_name} - Epoch[{trainer.state.epoch:03}]")
-        for metric, value in metrics.items():
-            print(f"  Avg. {metric}: {value:.3f}", end='; ')
-        else:
-            print()
 
-def log_experiment(engine, logger: JSONRunLogger, split, trainer: Engine):
+def console_logging(evaluator: Engine, step_name: str, trainer: Engine):
+    metrics = evaluator.state.metrics
+    print(f"{step_name} - Epoch[{trainer.state.epoch:03}]")
+    for metric, value in metrics.items():
+        print(f"  Avg. {metric}: {value:.3f}", end='; ')
+    else:
+        print()
+
+def save_embeddings_handler(engine, logger: ExperimentLogger, model):
+    """Save embeddings at end of training."""
+    logger.save_embeddings(model)
+
+def log_experiment_handler(engine, logger: ExperimentLogger, split, trainer: Engine):
     """Log experiment results (usually each epoch) to files."""
     metrics = engine.state.metrics
     logger.log_metrics(trainer.state.epoch, metrics, split)
