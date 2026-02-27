@@ -1,8 +1,5 @@
 import numpy as np
 
-from tests.metrics.test_ranking import test_precision
-from tests.metrics.test_ranking import test_map_at_k
-
 def map_at_k(ranking: np.ndarray, relevant_items: np.ndarray, k: int) -> float:
     mean_precision = 0
     num_relevant = 0
