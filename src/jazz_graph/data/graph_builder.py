@@ -118,11 +118,10 @@ def torch_index(df: pd.DataFrame) -> torch.Tensor:
         data = data.reshape(-1, 1)
     return torch.tensor(data)
 
-def nodes_with_degree(data: HeteroData,  min_degree=1):
-    if min_degree != 1:
-        raise NotImplementedError("Removing nodes of degree one is the only supported operation.")
+def prune_island_nodes(data: HeteroData):
+    """Remove all nodes with degree 0."""
     node_types, edge_types = data.metadata()
-    masks = mask_node_degree(data, min_degree=min_degree)
+    masks = mask_node_degree(data, min_degree=1)
     out = HeteroData()
     for node_type in node_types:
         node_data = data[node_type]

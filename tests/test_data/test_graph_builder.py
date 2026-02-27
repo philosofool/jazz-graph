@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import pytest
 import torch
-from jazz_graph.data.graph_builder import nodes_with_degree, mask_node_degree, torch_values, torch_index, CreateTensors
+from jazz_graph.data.graph_builder import prune_island_nodes, mask_node_degree, torch_values, torch_index, CreateTensors
 from torch_geometric.data import HeteroData
 
 def test_torch_values():
@@ -139,9 +139,9 @@ def hetero_data() -> HeteroData:
     return data
 
 
-def test_nodes_with_degree(hetero_data, min_degree=1):
+def test_prune_island_nodes(hetero_data):
     data = hetero_data
-    result = nodes_with_degree(data)
+    result = prune_island_nodes(data)
 
     assert torch.all(result['artist'].x == torch.tensor([0, 1, 2]))
     assert torch.all(result['song'].x == torch.tensor([10, 11]))
@@ -159,7 +159,7 @@ def test_nodes_with_degree(hetero_data, min_degree=1):
 
 
 def test_mask_node_degree(hetero_data):
-    result = mask_node_degree(hetero_data, min_degree=1)
+    result = mask_node_degree(hetero_data)
     # assert torch.all(result['artist'] == torch.tensor([0, 0, 0, 1]))
     # assert torch.all(result['performance'] == torch.tensor([0, 0, 0, 0, 1]))
     # assert torch.all(result['song'] ==  torch.tensor([0, 0]))
