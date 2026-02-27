@@ -1,0 +1,32 @@
+Jan. 27 Meeting
+- We went over expectations, and agreed that the project looks good.
+- Aim to complete data tasks in a month, then modeling task in a month, then have a month for improvements, based on what makes the most sense.
+- We need a demonstration of the usefulness too.
+- Retrospectively: it seems like the applicaiton/demonstration needs some time.
+
+Feb. 3 Meeting
+- I reported a lot of process. Data has been loaded from discogs to musicbrainz and I have identified ~223,000 jazz recordings in the MB data.
+- I expect to have an intermediate representation which can be loaded as a pytorch geometric dataset by next week.
+- Prof. Bethard stressed that I should find a subset of the data for prototyping, i.e., don't try to run the model on the full graph of hundreds of thousands of nodes, edges, etc. until you have an end-to-end product.
+
+Feb. 10 meeting
+Questions:
+- There are quite a few records in the data that don't have substyle information. This is more likely a data artifact than a fact about the music itself. An interesting project would be to mask those and use the GNN to infer subgenre information.
+- I think an edge prediction task is better than substyles. The substyle information looks like it's probably somewhat incomplete and inconsistent. Edge data can be missing but that can always be corrected; only a tiny percentage of recorded performances have missing performer information. So, adding an instrument attribute to edges and predicting missing performer for the edge seems like a solid task. Maybe this part is a bit of a work in progress.
+- To subset for prototyping, use date information to filter results to a few years worth of performance data (say, 1958-193, which was a huge period for jazz recording and provides a lot of litmus cases.) That's probably simpler than trying to randomly select nodes and delete edges which are invalid because they connect an unselected node.
+Comments and notes:
+- The way that I've proposed to extract data means that the first master a performance appears on is the one that logs the recording and associates it with a discog id. *This may corrupt later merges of discog data.* Usually, discogs release with the earliest release date should probably be the discog release data to use. Later overlapping releases are probably compilations and may include misleading data. (Example: "So What" is probably has style "modal jazz". Later, in a Miles Davis anthology, you might find the anthology having "modal" "jazz rock" "cool jazz" "bebop" "hard bop" and "post bop" labels--but we want "So What" associated with the style of the album Kind of Blue, not later anthologies. Easy fix: sort the discogs records in ascending release date and rebuild the data.
+TO DO this week:
+[] Improve features on performances: add date data (get first release dates)
+[x] Extracted all relevant jazz recordings (by my current cirteria) to parquet files.
+[-] Subset that data for prototyping.
+[] Write PyG dataset for the data.
+
+
+Continue
+[x] First releases
+[x] Improve features on performances: add date data (get first release dates)
+[] Normalize instrument data, slim to 10-20 important instruments, include "Other".
+[x] Subset that data for prototyping. I slimmed the data to six years of jazz around 1960.
+[] Write PyG dataset for the data.
+[] Plan of the dev/train/test set.

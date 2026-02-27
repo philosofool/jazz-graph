@@ -1,5 +1,5 @@
 from jazz_graph.etl.load import LoadData
-from jazz_graph.schema.sql import TableSchema, PrimaryKey, Column
+from jazz_graph.data.schema.sql import TableSchema, PrimaryKey, Column
 
 import pandas as pd
 import pytest
