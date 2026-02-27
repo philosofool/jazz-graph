@@ -14,8 +14,6 @@ if TYPE_CHECKING:
     from ignite.engine import Engine
     from jazz_graph.model.model import NodeClassifier, LinkPredictionModel, JazzModel
 
-# Thanks to ChatGPT for creating this.
-
 
 def get_git_commit():
     try:
@@ -25,7 +23,25 @@ def get_git_commit():
     except:
         return None
 
+def is_working_tree_dirty(path=".", untracked_only=True) -> bool:
+    """
+    Returns True if the git working tree has tracked or untracked changes.
+    Returns False if the tree is clean.
+    """
+    cmd = ["git", "status", "--porcelain"]
+    if not untracked_only:
+        cmd.append("--untracked-files=no")
+    result = subprocess.run(
+        cmd,
+        cwd=path,
+        capture_output=True,
+        text=True,
+        check=True
+    )
+    return bool(result.stdout.strip())
 
+
+# Thanks to ChatGPT for creating this.
 class ExperimentLogger:
     """Log experiment runs."""
     def __init__(self, root="experiments", run_name=None, config=None):
