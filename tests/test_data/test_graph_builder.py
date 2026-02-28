@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import pytest
 import torch
-from jazz_graph.data.graph_builder import prune_island_nodes, mask_node_degree, torch_values, torch_index, CreateTensors
+from jazz_graph.data.graph_builder import prune_island_nodes, mask_node_degree, torch_values, torch_index, CreateTensors, map_to_new_node_index
 from torch_geometric.data import HeteroData
 
 def test_torch_values():
@@ -57,7 +57,7 @@ class TestCreateTensors:
 
     def test_performances(self):
         create = CreateTensors(self.path)
-        assert create.performances().shape == (3, 1)
+        assert create.performances().shape == (3, 2)
         assert create.performances().dtype == torch.int32
         np.testing.assert_array_equal(create.performances(), np.array([2000, 1956, 1976]).reshape(-1, 1))
 
@@ -118,24 +118,25 @@ class TestCreateTensors:
 @pytest.fixture
 def hetero_data() -> HeteroData:
     data = HeteroData()
-    data['artist'].x = torch.tensor([0, 1, 2, 3])
-    data['song'].x = torch.tensor([10, 11])
-    data['performance'].x = torch.tensor([20, 21, 22, 23, 24])
+    data['artist'].x = torch.tensor([3, 1, 0, 2])
+    data['song'].x = torch.tensor([10, 9, 11])
+    data['performance'].x = torch.tensor([20, 21, 22, 24, 23])
 
     data['artist', 'performs', 'performance'].edge_index = torch.tensor([
-        [1,   1,  2,  2,  2],  # zero and three missing.
+        [1,   1,  3,  3,  3],  # values zero and three missing.
         [0, 1, 0, 1, 2]   # 23 and 24 missing.
     ])
     data['performance', 'performing', 'song'].edge_index = torch.tensor([
-        [0, 1, 2, 3], # 24 missing; 23 is not an island (but has no performer info)
-        [0, 0, 1, 1]  # no song islands
+        [0, 1, 2, 4], # 24 missing (island); 23 is not an island (but has no performs relation)
+        [0, 0, 2, 2]  # no song islands
     ])
     data['artist', 'composed', 'song'].edge_index = torch.tensor([
-        [0, 1],  # zero is not an island: only composes. Three is an island.
-        [0, 1]
+        [0, 1],  # three is not an island: only composes. zero is an island.
+        [0, 2]
     ])
 
     data['performance'].y = torch.tensor([1, 2, 3, 4, 5]) / 10
+    data['artist'].y = torch.tensor([3, 5, 4, 9], dtype=torch.float32)
     return data
 
 
@@ -143,19 +144,48 @@ def test_prune_island_nodes(hetero_data):
     data = hetero_data
     result = prune_island_nodes(data)
 
-    assert torch.all(result['artist'].x == torch.tensor([0, 1, 2]))
+    assert torch.all(result['artist'].x == torch.tensor([3, 1, 2]))
     assert torch.all(result['song'].x == torch.tensor([10, 11]))
     assert torch.all(result['performance'].x == torch.tensor([20, 21, 22, 23]))
-    assert torch.all(result['performance'].y == torch.tensor([1, 2, 3, 4]) / 10)
+    assert torch.all(result['performance'].y == torch.tensor([1, 2, 3, 5]) / 10), "All features associated with performance should be updated."
+    assert torch.all(result['artist'].y == torch.tensor([3, 5, 9], dtype=torch.float32)), "Features in artist labels should be dropped where the node is an island."
 
     expected_edges = hetero_data.metadata()[1]
-    assert expected_edges == result.metadata()[1]
-    for edge_type in expected_edges:
-        edge = result[edge_type]
-        for key, result_value in edge.items():
-            expected_value = data[edge_type][key]
-            assert torch.all(expected_value == result_value)
+    assert expected_edges == result.metadata()[1], "The result should have the same edges in this case."
 
+    expected_performs = torch.tensor([
+        [1,   1,  2,  2,  2],  # artist formerly at 3 is left shifted one.
+        [0, 1, 0, 1, 2]   # These are all he same.
+    ])
+    expected_performing = torch.tensor([
+        [0, 1, 2, 3], # performance formerly at 4 is left shifted.
+        [0, 0, 1, 1]  # song formerly at 2 is left shited.
+    ])
+    expected_composed = torch.tensor([
+        [0, 1],  # No shift from artists.
+        [0, 1]  # song formerly at 2 is left shifted.
+    ])
+    np.testing.assert_array_equal(result['performs'].edge_index, expected_performs)
+    np.testing.assert_array_equal(result['performing'].edge_index, expected_performing)
+    np.testing.assert_array_equal(result['composed'].edge_index, expected_composed)
+
+def test_map_to_new_node_index():
+    old_edge = torch.tensor([0, 1, 2, 0, 2, 1, 2, 3])
+    nodes_mask = torch.tensor([True, False, True, False])
+    expected = torch.tensor([0, 1, 0, 1, 1])
+    result = map_to_new_node_index(old_edge, nodes_mask)
+    np.testing.assert_array_equal(result, expected)
+
+    old_edge = torch.tensor([0, 1, 2, 0, 2, 1, 2])
+    nodes_mask = torch.tensor([False, False, False])
+    expected = torch.tensor([])
+    result = map_to_new_node_index(old_edge, nodes_mask)
+    np.testing.assert_array_equal(result, expected)
+
+    old_edge = torch.tensor([0, 1, 2, 0, 2, 1, 2])
+    nodes_mask = torch.tensor([False, False])
+    with np.testing.assert_raises(IndexError):
+        map_to_new_node_index(old_edge, nodes_mask)
 
 
 def test_mask_node_degree(hetero_data):

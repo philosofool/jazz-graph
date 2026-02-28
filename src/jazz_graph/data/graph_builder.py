@@ -123,17 +123,38 @@ def prune_island_nodes(data: HeteroData):
     node_types, edge_types = data.metadata()
     masks = mask_node_degree(data, min_degree=1)
     out = HeteroData()
+    # set the node data in out.
     for node_type in node_types:
         node_data = data[node_type]
         for key, value in node_data.items():
             mask = masks[node_type]
             value = value[mask]
             out[node_type][key] = value
-    for edge_type in edge_types:
-        edge = data[edge_type]
-        for k, v in edge.items():
-            out[edge_type][k] = v
+    # set the edge indexes in out.
+    for src, relation, dst in edge_types:
+        edge = data[src, relation, dst]
+        # currently assumes edge_index is only edge property.
+        src_indexes = edge.edge_index[0]
+        dst_indexes = edge.edge_index[1]
+        new_edge_index = torch.stack([
+            map_to_new_node_index(src_indexes, masks[src]),
+            map_to_new_node_index(dst_indexes, masks[dst])
+        ])
+        out[src, relation, dst].edge_index = new_edge_index
     return out
+
+
+def map_to_new_node_index(edge_index, node_mask: torch.Tensor) -> torch.Tensor:
+    """Remap the values in edge index to point to values in a new tensor
+    that contains only values the nodes in nodes mask.
+    """
+    new_node_index = node_mask.to(torch.int64)
+    new_node_index[0] = new_node_index[0] - 1
+    new_node_index = torch.cumsum(new_node_index, dim=0)
+    edges_to_keep = node_mask[edge_index]
+    new_edge = new_node_index[edge_index]
+    return new_edge[edges_to_keep]
+
 
 def mask_node_degree(data: HeteroData, min_degree=1):
     node_types, edge_types = data.metadata()
