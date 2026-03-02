@@ -53,11 +53,11 @@ class JazzModel(nn.Module):
         self.gnn = GNNModel(hidden_dim, embed_dim, metadata, dropout)
 
 
-    def forward(self, x_dict, edge_dict) -> torch.Tensor:
+    def forward(self, x_dict, edge_dict, batch) -> torch.Tensor:
         x_dict = {
-            'performance': self.performance_embed(x_dict['performance'].view(-1)),
-            'artist': self.artist_embed(x_dict['artist'].view(-1)),
-            'song': self.song_embed(x_dict['song'].view(-1))
+            'performance': self.performance_embed(batch['performance'].n_id),
+            'artist': self.artist_embed(batch['artist'].n_id),
+            'song': self.song_embed(batch['song'].n_id)
         }
 
         x_dict = self.gnn(x_dict, edge_dict)
@@ -65,24 +65,26 @@ class JazzModel(nn.Module):
 
 
 class NodeClassifier(nn.Module):
-    def __init__(self, base_model, hidden_dim, num_classes):
+    def __init__(self, base_model: JazzModel, hidden_dim, num_classes):
         super().__init__()
         self.base_model = base_model
         self.classifier = nn.Linear(hidden_dim, num_classes)
 
-    def forward(self, x_dict, edge_index_dict):
-        x_dict = self.base_model(x_dict, edge_index_dict)
+    def forward(self, batch):
+        x_dict, edge_index_dict = batch.x_dict, batch.edge_index_dict
+        x_dict = self.base_model(x_dict, edge_index_dict, batch)
         logits = self.classifier(x_dict['performance'])
         return logits
 
 
 class LinkPredictionModel(nn.Module):
-    def __init__(self, base_model):
+    def __init__(self, base_model: JazzModel):
         super().__init__()
         self.base_model = base_model
 
-    def forward(self, x_dict, edge_index_dict, edge_label_index) -> torch.Tensor:
-        x_dict = self.base_model(x_dict, edge_index_dict)
+    def forward(self, batch) -> torch.Tensor:
+        x_dict, edge_index_dict, edge_label_index = batch.x_dict, batch.edge_index_dict, batch['performs'].edge_label_index
+        x_dict = self.base_model(x_dict, edge_index_dict, batch)
         # Do dot-product classification.
         #   Align the artist learned feature by the edge index, same for performance:
         artists_to_performance = x_dict['artist'][edge_label_index[0]]
