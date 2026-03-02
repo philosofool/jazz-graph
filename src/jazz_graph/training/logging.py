@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import jsonlines
 import os
 from datetime import datetime
 from pathlib import Path
@@ -100,6 +101,8 @@ class ExperimentLogger:
         print(f"Saved embeddings to {self.run_dir}")
 
 
+## Handlers
+
 def run_evaluator_handler(trainer: Engine, evaluator: Engine, loader: LinkNeighborLoader):
     evaluator.run(loader)
 
@@ -125,3 +128,37 @@ def binary_output_transform(output: dict[str, torch.Tensor]) -> tuple:
     y_pred = (output["y_pred"] > 0).long()
     y_true = output["y_true"]
     return y_pred, y_true
+
+## VISUALIZATION of logs.
+
+def update_metrics(metrics, new_metrics):
+    for key, value in new_metrics.items():
+        metrics[key].append(value)
+
+def flat_logs(logs_path: Path | str) -> dict:
+    print(logs_path)
+    logs_path = Path(logs_path)
+    from collections import defaultdict
+    splits = defaultdict(lambda: defaultdict(list))
+    with jsonlines.open(logs_path / 'metrics.jsonl') as f:
+        for log in f:
+            # log = json.loads(f)
+            split = log.pop('split')
+            log.pop('epoch')
+            record = splits[split]
+            update_metrics(record, log)
+    return splits
+
+def plot_logs(logs_path):
+    import matplotlib.pyplot as plt
+    logs = flat_logs(logs_path)
+    n_row = len(next(iter(logs.values())))
+    fig, ax = plt.subplots(n_row, 1)
+    fig.set_size_inches(5, n_row * 3)
+    for split, log in logs.items():
+        i = 0
+        for metric, values in log.items():
+            axes = ax[i]
+            axes.plot(values, label=f"{split} {metric}")
+            i += 1
+    fig.legend()
