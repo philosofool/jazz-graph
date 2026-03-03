@@ -10,26 +10,31 @@ if TYPE_CHECKING:
     from torch_geometric.data import HeteroData
 
 class GNNModel(nn.Module):
-    def __init__(self, hidden_dim, input_dim, metadata, dropout=0.):
+    def __init__(self, hidden_dim, input_dim, metadata, num_layers=3, dropout=0.):
         super().__init__()
-        self.conv1 = HeteroConv({
-            key: SAGEConv(input_dim, hidden_dim) for key in metadata[1]
-        })
-        self.conv2 = HeteroConv({
-            key: SAGEConv(hidden_dim, hidden_dim) for key in metadata[1]
-        })
-        self.conv3 = HeteroConv({
-            key: SAGEConv(hidden_dim, hidden_dim) for key in metadata[1]
-        })
+        self.num_layers = num_layers
         self.dropout = nn.Dropout(dropout)
 
+        # Create layers dynamically
+        self.convs = nn.ModuleList()
+        for i in range(num_layers):
+            in_dim = input_dim if i == 0 else hidden_dim
+            self.convs.append(
+                HeteroConv({
+                    key: SAGEConv(in_dim, hidden_dim, normalize=True) for key in metadata[1]
+                })
+            )
+
     def forward(self, x_dict, edge_dict):
-        x_dict = self.conv1(x_dict, edge_dict)
-        x_dict = {key: self.dropout(F.relu(val)) for key, val in x_dict.items()}
-        x_dict = self.conv2(x_dict, edge_dict)
-        x_dict = {key: self.dropout(F.relu(val)) for key, val in x_dict.items()}
-        x_dict = self.conv3(x_dict, edge_dict)
-        x_dict = {key: self.dropout(val) for key, val in x_dict.items()}
+        for i, conv in enumerate(self.convs):
+            x_dict = conv(x_dict, edge_dict)
+
+            # Apply ReLU + dropout to all layers except the last
+            if i < self.num_layers - 1:
+                x_dict = {key: self.dropout(F.relu(val)) for key, val in x_dict.items()}
+            else:
+                # Last layer: dropout only (no ReLU)
+                x_dict = {key: self.dropout(val) for key, val in x_dict.items()}
 
         return x_dict
 
@@ -42,7 +47,8 @@ class JazzModel(nn.Module):
         embed_dim: int,
         hidden_dim: int,
         metadata: tuple,
-        dropout: float = 0.0
+        dropout: float = 0.0,
+        num_layers=3
     ):
         super().__init__()
 
@@ -50,7 +56,7 @@ class JazzModel(nn.Module):
         self.song_embed = nn.Embedding(num_songs, embed_dim)
         self.artist_embed = nn.Embedding(num_artists, embed_dim)
 
-        self.gnn = GNNModel(hidden_dim, embed_dim, metadata, dropout)
+        self.gnn = GNNModel(hidden_dim, embed_dim, metadata, num_layers, dropout)
 
 
     def forward(self, x_dict, edge_dict, batch) -> torch.Tensor:
