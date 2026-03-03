@@ -190,12 +190,10 @@ def test_map_to_new_node_index():
 
 def test_mask_node_degree(hetero_data):
     result = mask_node_degree(hetero_data)
-    # assert torch.all(result['artist'] == torch.tensor([0, 0, 0, 1]))
-    # assert torch.all(result['performance'] == torch.tensor([0, 0, 0, 0, 1]))
-    # assert torch.all(result['song'] ==  torch.tensor([0, 0]))
-    assert torch.all(result['artist'] == torch.tensor([1, 1, 1, 0]))
-    assert torch.all(result['performance'] == torch.tensor([1, 1, 1, 1, 0]))
-    assert torch.all(result['song'] ==  torch.tensor([1, 1]))
+    assert result['artist'].dtype == torch.bool
+    assert torch.all(result['artist'] == torch.tensor([1, 1, 0, 1]))
+    assert torch.all(result['performance'] == torch.tensor([1, 1, 1, 0, 1]))
+    assert torch.all(result['song'] ==  torch.tensor([1, 0, 1]))
 
     result = mask_node_degree(hetero_data, min_degree=2)
-    assert torch.all(result['artist'] ==  torch.tensor([0, 1, 1, 0])), "Artist 3 is an island, artist 0 has one composition edge."
+    assert torch.all(result['artist'] ==  torch.tensor([0, 1, 0, 1])), "Artist 3 is an island, artist 0 has one composition edge."
