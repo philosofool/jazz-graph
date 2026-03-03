@@ -88,7 +88,8 @@ def queries() -> SQL:
             SELECT
                 recording_id,
                 discogs_id as discogs_id,
-                release_date
+                release_date,
+                release_group_id
             FROM jazz_recordings
             WHERE jazz_recordings.release_date >= %(start)s
                 AND jazz_recordings.release_date < %(end)s
@@ -152,7 +153,8 @@ def create_tables(start, end, directory):
         unique=['recording_id', 'work_id'],
         ordered=True)
     artist_schema = pandera.DataFrameSchema({'artist_id': int64_col_unique})
-    performance_schema = pandera.DataFrameSchema({'recording_id': int64_col_unique, 'release_date': pandera.Column('')})
+    performance_schema = pandera.DataFrameSchema(
+        {'recording_id': int64_col_unique, 'release_date': pandera.Column(''), 'release_group_id': int64_col})
     song_schema = pandera.DataFrameSchema({'work_id': int64_col_unique})
 
     sql = queries()

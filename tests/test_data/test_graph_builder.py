@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import pytest
 import torch
-from jazz_graph.data.graph_builder import prune_island_nodes, mask_node_degree, torch_values, torch_index, CreateTensors, map_to_new_node_index
+from jazz_graph.data.graph_builder import make_inter_node_edges, prune_island_nodes, mask_node_degree, torch_values, torch_index, CreateTensors, map_to_new_node_index
 from torch_geometric.data import HeteroData
 
 def test_torch_values():
@@ -197,3 +197,21 @@ def test_mask_node_degree(hetero_data):
 
     result = mask_node_degree(hetero_data, min_degree=2)
     assert torch.all(result['artist'] ==  torch.tensor([0, 1, 0, 1])), "Artist 3 is an island, artist 0 has one composition edge."
+
+def test_make_inter_node_edges():
+    df = pd.DataFrame.from_records([
+        (100, 200),
+        (101, 200),
+        (102, 201),
+        (103, 202),
+        (104, 201),
+        (105, 200)
+    ], columns=['recording_id', 'album_id'])
+    result = make_inter_node_edges(df, 'album_id')
+    expected = np.array([
+        [0, 1],
+        [2, 4],
+        [0, 5],
+        [1, 5],
+    ]).T
+    np.testing.assert_array_equal(result, expected)

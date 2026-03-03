@@ -84,8 +84,8 @@ class CreateTensors:
         if self._performances is None:
             self._performances = self.load_parquet('performance_nodes.parquet')
             self._performances['release_date'] = self._performances.release_date.astype('datetime64[ms]').dt.year
-            self._performances = self._performances[['release_date', 'recording_id']].copy()
-        return torch_values(self._performances)
+            self._performances = self._performances[['release_date', 'recording_id', 'release_group_id']].copy()
+        return torch_values(self._performances[['release_date', 'recording_id',]])
 
     def artist_song_edges(self) -> torch.Tensor:
         if getattr(self, '_song_artist_edges', None) is None:
@@ -105,6 +105,14 @@ class CreateTensors:
             df = self.load_parquet('performance_song_edges.parquet')
             self._performance_song_edges = df[['recording_id', 'work_id']].copy()
         return torch_values(self._performance_song_edges).T
+
+    def same_album_edges(self) -> torch.Tensor:
+        if self._performances is None:
+            self.performances()
+        performance_data = self._performances
+        perf_same_album_perf_edges = make_inter_node_edges(performance_data, 'release_group_id')
+        return torch.tensor(perf_same_album_perf_edges)
+
 
 
 def torch_values(df: pd.DataFrame) -> torch.Tensor:
@@ -194,6 +202,7 @@ def make_jazz_data(create: CreateTensors) -> HeteroData:
     data['artist', 'performs', 'performance'].edge_index = create.artist_performance_edges()
     data['performance', 'performing', 'song'].edge_index = create.performance_song_edges()
     data['artist', 'composed', 'song'].edge_index = create.artist_song_edges()
+    data['performance', 'same_album', 'performance'].edge_index = create.same_album_edges()
 
     data['performance'].y = create.labels()
     data['performance'].train_mask = create.train_mask()
@@ -205,3 +214,19 @@ def make_jazz_data(create: CreateTensors) -> HeteroData:
     data = prune_island_nodes(data)
     data = ToUndirected()(data)
     return data
+
+def make_inter_node_edges(data: pd.DataFrame, link_on: str) -> np.ndarray:
+    links = {}
+    row_idx = 0
+    out = []
+    for idx, row in data.iterrows():
+        link_value = row[link_on]
+        known_links = links.get(link_value)
+        if known_links is None:
+            links[link_value] = [row_idx]
+        else:
+            for known_link in known_links:
+                out.append([known_link, row_idx])
+            links[link_value].append(row_idx)
+        row_idx += 1
+    return np.array(out).T
