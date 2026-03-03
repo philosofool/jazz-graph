@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import jsonlines
 import os
 from datetime import datetime
 from pathlib import Path
@@ -12,8 +13,7 @@ import torch
 if TYPE_CHECKING:
     from torch_geometric.loader import LinkNeighborLoader
     from ignite.engine import Engine
-
-# Thanks to ChatGPT for creating this.
+    from jazz_graph.model.model import NodeClassifier, LinkPredictionModel, JazzModel
 
 
 def get_git_commit():
@@ -24,8 +24,26 @@ def get_git_commit():
     except:
         return None
 
+def is_working_tree_dirty(path=".", untracked_only=True) -> bool:
+    """
+    Returns True if the git working tree has tracked or untracked changes.
+    Returns False if the tree is clean.
+    """
+    cmd = ["git", "status", "--porcelain"]
+    if not untracked_only:
+        cmd.append("--untracked-files=no")
+    result = subprocess.run(
+        cmd,
+        cwd=path,
+        capture_output=True,
+        text=True,
+        check=True
+    )
+    return bool(result.stdout.strip())
 
-class JSONRunLogger:
+
+# Thanks to ChatGPT for creating this.
+class ExperimentLogger:
     """Log experiment runs."""
     def __init__(self, root="experiments", run_name=None, config=None):
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -59,18 +77,51 @@ class JSONRunLogger:
         path = ckpt_dir / name
         torch.save(model.state_dict(), path)
 
+    def save_embeddings(self, model: NodeClassifier | LinkPredictionModel):
+        base_model: JazzModel = model.base_model
 
-def run_evaluator(trainer, evaluator:Engine, loader: LinkNeighborLoader, step_name: str, verbose=True):
+        # Save embeddings as tensors
+        torch.save({
+            'performance': base_model.performance_embed.cpu(),
+            'artist': base_model.artist_embed.cpu(),
+            'song': base_model.song_embed.cpu(),
+        }, self.run_dir / "embeddings.pt")
+
+        # Save node ID mappings (critical for recommendations!)
+        metadata = {
+            'num_performances': base_model.performance_embed.weight.shape[0],
+            'num_artists': base_model.artist_embed.weight.shape[0],
+            'num_songs': base_model.song_embed.weight.shape[0],
+            'embedding_dim': base_model.performance_embed.weight.shape[1],
+        }
+
+        with open(self.run_dir / "metadata.json", 'w') as f:
+            json.dump(metadata, f, indent=2)
+
+        print(f"Saved embeddings to {self.run_dir}")
+
+
+## Handlers
+
+def run_evaluator_handler(trainer: Engine, evaluator: Engine, loader: LinkNeighborLoader):
     evaluator.run(loader)
-    if verbose:
-        metrics = evaluator.state.metrics
-        print(f"{step_name} - Epoch[{trainer.state.epoch:03}]")
-        for metric, value in metrics.items():
-            print(f"  Avg. {metric}: {value:.3f}", end='; ')
-        else:
-            print()
 
-def log_experiment(engine, logger: JSONRunLogger, split, trainer: Engine):
+def console_logging(evaluator: Engine, step_name: str, trainer: Engine):
+    metrics = evaluator.state.metrics
+    print(f"{step_name} - Epoch[{trainer.state.epoch:03}]")
+    for metric, value in metrics.items():
+        print(f"  Avg. {metric}: {value:.3f}", end='; ')
+    else:
+        print()
+
+def save_embeddings_handler(engine, logger: ExperimentLogger, model):
+    """Save embeddings at end of training."""
+    logger.save_embeddings(model)
+
+def save_checkpoint_handler(engine, logger: ExperimentLogger, model):
+    logger.save_checkpoint(model)
+
+def log_experiment_handler(engine, logger: ExperimentLogger, split, trainer: Engine):
     """Log experiment results (usually each epoch) to files."""
     metrics = engine.state.metrics
     logger.log_metrics(trainer.state.epoch, metrics, split)
@@ -80,3 +131,53 @@ def binary_output_transform(output: dict[str, torch.Tensor]) -> tuple:
     y_pred = (output["y_pred"] > 0).long()
     y_true = output["y_true"]
     return y_pred, y_true
+
+## VISUALIZATION of logs.
+
+def update_metrics(metrics, new_metrics):
+    for key, value in new_metrics.items():
+        metrics[key].append(value)
+
+def flat_logs(logs_path: Path | str) -> dict:
+    print(logs_path)
+    logs_path = Path(logs_path)
+    from collections import defaultdict
+    splits = defaultdict(lambda: defaultdict(list))
+    with jsonlines.open(logs_path / 'metrics.jsonl') as f:
+        for log in f:
+            # log = json.loads(f)
+            split = log.pop('split')
+            log.pop('epoch')
+            record = splits[split]
+            update_metrics(record, log)
+    return splits
+
+def plot_logs(logs_path):
+    import matplotlib.pyplot as plt
+    logs = flat_logs(logs_path)
+    n_row = len(next(iter(logs.values())))
+    fig, ax = plt.subplots(n_row, 1)
+    fig.set_size_inches(5, n_row * 3)
+    for split, log in logs.items():
+        i = 0
+        for metric, values in log.items():
+            axes = ax[i]
+            axes.plot(values, label=f"{split} {metric}")
+            i += 1
+    fig.legend()
+
+
+def load_embeddings(embedding_path):
+    """Load embeddings for recommendation."""
+    embedding_path = Path(embedding_path)
+    embeddings = torch.load(embedding_path / "embeddings.pt", weights_only=False)
+    with open(embedding_path / "metadata.json", 'r') as f:
+        metadata = json.load(f)
+
+    return embeddings, metadata
+
+
+def load_model(model_path):
+    model_path = Path(model_path)
+    model = torch.load(model_path / "checkpoints" / "last.pt")
+    return model

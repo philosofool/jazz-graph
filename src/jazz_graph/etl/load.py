@@ -29,6 +29,9 @@ class LoadData:
         sql = self.schema.create_table_sql()
         cursor.execute(sql)
 
+    def drop_table(self, cursor, if_exists: bool = True):
+        cursor.execute(self.schema.drop_table_sql(if_exists=if_exists))
+
     def pandas_to_stream(self, df: pd.DataFrame):
         csv_buff = io.StringIO()
         df.to_csv(csv_buff, index=False)

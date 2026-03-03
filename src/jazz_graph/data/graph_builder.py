@@ -7,6 +7,8 @@ import torch
 import torch_geometric
 from torch_geometric.data import HeteroData
 from torch_geometric.utils import degree
+from torch_geometric.transforms import ToUndirected
+
 
 
 class CreateTensors:
@@ -50,16 +52,18 @@ class CreateTensors:
         # NOTE: this is not probably best for the final version.
         # I'm simiplifying for the prototype.
         # we should probably mask whole albums. The large majority
-        # of performances on an album have identical personal and
+        # of performances on an album have identical personel and
         # differ only in song BUT style info is also usually
         # done at the album level. The task of style classification
         # or edge prediction is probably too easy if that's all it
         # takes--you would rarely need more than the immediate
         # neighborhood of a node to do the prediction. So:
         # FIXME: these masks should be done at the album grouping level.
+        # NOTE: Not sure about the above note. The task seems difficult
+        # enough that masking whole albums may be unnecessary.
         size = self.performances().size(0)
-        if size > 15_000:
-            raise NotImplementedError("This data is not production ready and should only be used with prototyping date right now.")
+        # if size > 15_000:
+        #     raise NotImplementedError("This data is not production ready and should only be used with prototyping date right now.")
         rng = np.random.default_rng(seed)
         train_idx = rng.random(size) < .8
         test_idx = ~train_idx & (rng.random(size) < .5)
@@ -80,7 +84,7 @@ class CreateTensors:
         if self._performances is None:
             self._performances = self.load_parquet('performance_nodes.parquet')
             self._performances['release_date'] = self._performances.release_date.astype('datetime64[ms]').dt.year
-            self._performances = self._performances[['release_date']].copy()
+            self._performances = self._performances[['release_date', 'recording_id']].copy()
         return torch_values(self._performances)
 
     def artist_song_edges(self) -> torch.Tensor:
@@ -123,17 +127,38 @@ def prune_island_nodes(data: HeteroData):
     node_types, edge_types = data.metadata()
     masks = mask_node_degree(data, min_degree=1)
     out = HeteroData()
+    # set the node data in out.
     for node_type in node_types:
         node_data = data[node_type]
         for key, value in node_data.items():
             mask = masks[node_type]
             value = value[mask]
             out[node_type][key] = value
-    for edge_type in edge_types:
-        edge = data[edge_type]
-        for k, v in edge.items():
-            out[edge_type][k] = v
+    # set the edge indexes in out.
+    for src, relation, dst in edge_types:
+        edge = data[src, relation, dst]
+        # currently assumes edge_index is only edge property.
+        src_indexes = edge.edge_index[0]
+        dst_indexes = edge.edge_index[1]
+        new_edge_index = torch.stack([
+            map_to_new_node_index(src_indexes, masks[src]),
+            map_to_new_node_index(dst_indexes, masks[dst])
+        ])
+        out[src, relation, dst].edge_index = new_edge_index
     return out
+
+
+def map_to_new_node_index(edge_index, node_mask: torch.Tensor) -> torch.Tensor:
+    """Remap the values in edge index to point to values in a new tensor
+    that contains only values the nodes in nodes mask.
+    """
+    new_node_index = node_mask.to(torch.int64)
+    new_node_index[0] = new_node_index[0] - 1
+    new_node_index = torch.cumsum(new_node_index, dim=0)
+    edges_to_keep = node_mask[edge_index]
+    new_edge = new_node_index[edge_index]
+    return new_edge[edges_to_keep]
+
 
 def mask_node_degree(data: HeteroData, min_degree=1):
     node_types, edge_types = data.metadata()
@@ -147,3 +172,36 @@ def mask_node_degree(data: HeteroData, min_degree=1):
         n_dst_nodes = data[dst].num_nodes
         total_degrees[dst] = total_degrees[dst] + degree(edge[1], num_nodes=n_dst_nodes)
     return {k: v >= min_degree for k, v in total_degrees.items()}
+
+
+def make_jazz_data(create: CreateTensors) -> HeteroData:
+    data = HeteroData()
+
+    def index_tensor(tensor):
+        """Return 0, 1, 2... for each value in tensor. (An index.)
+
+        When sampling graph nodes, we want a direct lookup of the node
+        ids.
+        """
+        return torch.arange(0, tensor.size(0), dtype=torch.int64).reshape(-1, 1)
+
+    # This is a little clunky. The nodes are not expected to provide
+    # substantial feature information--the information is the graph.
+    data['performance'].x = create.performances()
+    data['song'].x = create.songs()
+    data['artist'].x = create.artists()
+
+    data['artist', 'performs', 'performance'].edge_index = create.artist_performance_edges()
+    data['performance', 'performing', 'song'].edge_index = create.performance_song_edges()
+    data['artist', 'composed', 'song'].edge_index = create.artist_song_edges()
+
+    data['performance'].y = create.labels()
+    data['performance'].train_mask = create.train_mask()
+    data['performance'].dev_mask = create.dev_mask()
+    data['performance'].test_mask = create.test_mask()
+
+    # TODO: maybe? add instrument attributes on edges.
+    # data['artist', 'performs', 'performance'].edge_attr = <instrument>
+    data = prune_island_nodes(data)
+    data = ToUndirected()(data)
+    return data
