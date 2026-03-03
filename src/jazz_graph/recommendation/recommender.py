@@ -107,6 +107,7 @@ class Recommender:
         return recommendations, scores
 
     def _sort_scores(self, scores) -> tuple[np.ndarray, np.ndarray]:
+        scores = scores.view(-1)
         recommendations = torch.argsort(scores, descending=True)
         rec_recordings = self.lookup_recordings.lookup_recording_ids(recommendations.numpy())
         return rec_recordings, scores[recommendations].numpy()
@@ -122,10 +123,10 @@ class PredictLinkRecommender(Recommender):
     def __init__(self, model: JazzModel, data: HeteroData, lookup: LookupRecordings):
         self.model = model
         self.data = data
-        self.lookup = lookup
+        self.lookup_recordings = lookup
 
     def get_user_parameters(self, user_listens: list[int], weight_by_count: bool = False):
-        performance_idx = torch.tensor(self.lookup.lookup_node_index(user_listens))
+        performance_idx = torch.tensor(self.lookup_recordings.lookup_node_index(user_listens))
         num_existing_artists = self.data['artist'].num_nodes
         num_performances = self.data['performance'].num_nodes
         new_edge_index = torch.stack([

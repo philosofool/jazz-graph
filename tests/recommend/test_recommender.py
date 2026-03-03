@@ -73,8 +73,20 @@ class TestPredictLinkRecommender:
         new_nodes, new_edges, new_embeds = recommender.get_user_parameters(user_listens)
         assert torch.all(new_nodes['artist']['x'] == torch.tensor([[4]]))
         assert torch.all(new_edges[('artist', 'performs', 'performance')]['edge_index'] == torch.tensor([[4, 4], [1, 2]]))
-        np.testing.assert_array_equal(new_edges[('artist', 'rev_performs', 'performance')]['edge_index'], torch.tensor([[4, 4], [1, 2]]).flip(0))
+        np.testing.assert_array_equal(new_edges[('performance', 'rev_performs', 'artist')]['edge_index'], torch.tensor([[4, 4], [1, 2]]).flip(0))
         assert new_embeds.shape == (1, 8)
+
+    def test__sort_scores(self, recommender):
+        scores = torch.tensor([[.1, -1., -.4, -.33, .72]]).t()
+        recs, scores = recommender._sort_scores(scores)
+        # expected = [20, 21, 22, 24, 23]
+        # expected = [1, 2, 4, 3, 0]
+        expected_recs = [23, 20, 24, 22, 21]
+        expected_scores = [.72, .1, -.33, -.4, -1.]
+        np.testing.assert_array_equal(recs, expected_recs)
+        np.testing.assert_array_almost_equal(scores, expected_scores)
+
+
 
     def test_inductive_recommend(self, recommender):
         user_listens = [21, 22]
