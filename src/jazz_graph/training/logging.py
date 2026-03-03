@@ -118,6 +118,9 @@ def save_embeddings_handler(engine, logger: ExperimentLogger, model):
     """Save embeddings at end of training."""
     logger.save_embeddings(model)
 
+def save_checkpoint_handler(engine, logger: ExperimentLogger, model):
+    logger.save_checkpoint(model)
+
 def log_experiment_handler(engine, logger: ExperimentLogger, split, trainer: Engine):
     """Log experiment results (usually each epoch) to files."""
     metrics = engine.state.metrics
@@ -176,5 +179,5 @@ def load_embeddings(embedding_path):
 
 def load_model(model_path):
     model_path = Path(model_path)
-    model = torch.load(model_path / "last.pt")
+    model = torch.load(model_path / "checkpoints" / "last.pt")
     return model
