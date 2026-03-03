@@ -162,3 +162,19 @@ def plot_logs(logs_path):
             axes.plot(values, label=f"{split} {metric}")
             i += 1
     fig.legend()
+
+
+def load_embeddings(embedding_path):
+    """Load embeddings for recommendation."""
+    embedding_path = Path(embedding_path)
+    embeddings = torch.load(embedding_path / "embeddings.pt", weights_only=False)
+    with open(embedding_path / "metadata.json", 'r') as f:
+        metadata = json.load(f)
+
+    return embeddings, metadata
+
+
+def load_model(model_path):
+    model_path = Path(model_path)
+    model = torch.load(model_path / "last.pt")
+    return model
