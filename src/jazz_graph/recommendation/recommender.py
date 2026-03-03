@@ -150,7 +150,7 @@ class PredictLinkRecommender(Recommender):
         else:
             artist_embeds = self.model.artist_embed(artists.unique())
         with torch.no_grad():
-            new_embeds = artist_embeds.mean(dim=0, keepdim=True)
+            new_embeds = torch.max(artist_embeds, dim=0, keepdim=True)[0]
         return new_embeds
 
     def inductive_rec(self, new_nodes, new_edges, new_artist_embed):
