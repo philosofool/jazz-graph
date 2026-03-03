@@ -1,15 +1,19 @@
-from codecs import lookup
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 import torch
 from torch import nn
 import torch.nn.functional as F
-from pathlib import Path
-import json
 import pandas as pd
 import numpy as np
 from numpy.typing import ArrayLike
 from collections.abc import Callable
 
 from jazz_graph.data.graph_builder import CreateTensors
+from jazz_graph.training.logging import load_embeddings
+
+if TYPE_CHECKING:
+    from torch_geometric.data import HeteroData
 
 
 def cosine_similarity(user_embedding: torch.Tensor, performance_embedding: torch.Tensor) -> torch.Tensor:
@@ -57,6 +61,9 @@ class LookupRecordings:
         data = self.data.loc[listens_subset]
         return data['ids'].to_numpy()
 
+    def mask_listens(self, listens: list[int]):
+        return self.data.index.isin(listens)
+
     def lookup_recording_ids(self, indexes: np.ndarray) -> np.ndarray:
         """Get recording ids from a collection of node indexes."""
         return self.data.index[indexes].to_numpy()
@@ -96,16 +103,99 @@ class Recommender:
     def get_recommendations(self, listens: list[int]):
         user_embedding = self.make_user_embedding(listens)
         similarity_scores = dot_product_similarity(user_embedding, self.embeddings.weight)
-        recommendations = torch.argsort(similarity_scores, descending=True)
+        recommendations, scores = self._sort_scores(similarity_scores)
+        return recommendations, scores
+
+    def _sort_scores(self, scores) -> tuple[np.ndarray, np.ndarray]:
+        recommendations = torch.argsort(scores, descending=True)
         rec_recordings = self.lookup_recordings.lookup_recording_ids(recommendations.numpy())
-        return rec_recordings, similarity_scores[recommendations].numpy()
+        return rec_recordings, scores[recommendations].numpy()
 
 
-def load_embeddings(embedding_path):
-    """Load embeddings for recommendation."""
-    embedding_path = Path(embedding_path)
-    embeddings = torch.load(embedding_path / "embeddings.pt", weights_only=False)
-    with open(embedding_path / "metadata.json", 'r') as f:
-        metadata = json.load(f)
+## Inductive Graph Recommender
 
-    return embeddings, metadata
+from jazz_graph.data.graph_transforms import extend_graph
+from jazz_graph.data.graph_builder import make_jazz_data, CreateTensors
+from jazz_graph.model.model import JazzModel
+
+class PredictLinkRecommender(Recommender):
+    def __init__(self, model: JazzModel, data: HeteroData, lookup: LookupRecordings):
+        self.model = model
+        self.data = data
+        self.lookup = lookup
+
+    def get_user_parameters(self, user_listens: list[int], weight_by_count: bool = False):
+        performance_idx = torch.tensor(self.lookup.lookup_node_index(user_listens))
+        num_existing_artists = self.data['artist'].num_nodes
+        num_performances = self.data['performance'].num_nodes
+        new_edge_index = torch.stack([
+            torch.tensor(num_existing_artists).repeat(performance_idx.size(0)),
+            performance_idx
+        ])
+        new_nodes = {'artist': {'x': torch.tensor([[num_existing_artists]])}}
+        new_edges = {
+            ('artist', 'performs', 'performance'): {'edge_index': new_edge_index},
+            ('performance', 'rev_performs', 'artist'): {'edge_index': new_edge_index.flip(0)}
+        }
+        new_embeds = self._make_artist_embeds(performance_idx, weight_by_count)
+        return new_nodes, new_edges, new_embeds
+
+    def _make_artist_embeds(self, indexes, weight_by_count):
+        edge_index = self.data['artist', 'performs', 'performance'].edge_index
+        mask = torch.isin(edge_index[1], indexes)
+        artists = edge_index[0][mask]
+        if weight_by_count:
+            artist_embeds = self.model.artist_embed(artists)
+        else:
+            artist_embeds = self.model.artist_embed(artists.unique())
+        with torch.no_grad():
+            new_embeds = artist_embeds.mean(dim=0, keepdim=True)
+        return new_embeds
+
+    def inductive_rec(self, new_nodes, new_edges, new_artist_embed):
+        orig_num_artists = self.data['artist'].num_nodes
+        num_performances = self.data['performance'].num_nodes
+        new_artist_indecies = torch.arange(orig_num_artists, orig_num_artists + 1)
+        original_performance_indecies = torch.arange(num_performances)
+
+        # candidates: all paths from new artist to existing performances.
+        src = new_artist_indecies.repeat_interleave(num_performances)
+        dst = original_performance_indecies.repeat(1) # 1 = num_new indecies
+
+        new_data = extend_graph(self.data, new_nodes, new_edge_index=new_edges)
+        # add n_id feature to new data?
+        for node_type in new_data.metadata()[0]:
+            new_data[node_type].n_id = torch.arange(new_data[node_type].num_nodes)
+
+
+        with AmndedEmbeddings(self.model, new_artist_embed) as model:
+            with torch.no_grad():
+                z = model(new_data.x_dict, new_data.edge_index_dict, new_data)
+
+        scores = (z['performance'][dst] * z['artist'][src]).sum(-1)
+        scores = scores.view(1, num_performances)
+        return scores, z
+
+    def get_recommendations(self, listens, weight_by_count: bool = False):
+        """Return recommended recording ids and their scores."""
+        new_nodes, new_edges, new_embed = self.get_user_parameters(listens, weight_by_count)
+        scores, _ = self.inductive_rec(new_nodes, new_edges, new_embed)
+        rec_recordings, sorted_scores = self._sort_scores(scores)
+        return rec_recordings, sorted_scores
+
+
+
+class AmndedEmbeddings:
+    def __init__(self, model: JazzModel, new_embed_weights):
+        self.new_embed_weights = new_embed_weights
+        self.model = model
+
+    def __enter__(self):
+        self._old_embed = self.model.artist_embed
+        old_weights = self._old_embed.weight
+        new_embed = torch.nn.Embedding.from_pretrained(torch.concat([old_weights, self.new_embed_weights]))
+        self.model.artist_embed = new_embed
+        return self.model
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.model.artist_embed = self._old_embed
