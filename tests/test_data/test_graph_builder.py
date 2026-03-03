@@ -58,8 +58,8 @@ class TestCreateTensors:
     def test_performances(self):
         create = CreateTensors(self.path)
         assert create.performances().shape == (3, 2)
-        assert create.performances().dtype == torch.int32
-        np.testing.assert_array_equal(create.performances(), np.array([2000, 1956, 1976]).reshape(-1, 1))
+        assert create.performances().dtype == torch.int64
+        np.testing.assert_array_equal(create.performances(), np.array([[2000, 100], [1956, 101], [1976, 102]]))
 
     def test_songs(self):
         create = CreateTensors(self.path)
@@ -128,7 +128,7 @@ def hetero_data() -> HeteroData:
     ])
     data['performance', 'performing', 'song'].edge_index = torch.tensor([
         [0, 1, 2, 4], # 24 missing (island); 23 is not an island (but has no performs relation)
-        [0, 0, 2, 2]  # no song islands
+        [0, 0, 2, 2]  # song 9 is an island
     ])
     data['artist', 'composed', 'song'].edge_index = torch.tensor([
         [0, 1],  # three is not an island: only composes. zero is an island.

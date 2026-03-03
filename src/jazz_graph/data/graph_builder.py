@@ -187,9 +187,9 @@ def make_jazz_data(create: CreateTensors) -> HeteroData:
 
     # This is a little clunky. The nodes are not expected to provide
     # substantial feature information--the information is the graph.
-    data['performance'].x = index_tensor(create.performances())
-    data['song'].x = index_tensor(create.songs())
-    data['artist'].x = index_tensor(create.artists())
+    data['performance'].x = create.performances()
+    data['song'].x = create.songs()
+    data['artist'].x = create.artists()
 
     data['artist', 'performs', 'performance'].edge_index = create.artist_performance_edges()
     data['performance', 'performing', 'song'].edge_index = create.performance_song_edges()
