@@ -2,7 +2,7 @@ from __future__ import annotations
 import torch
 from torch import nn
 from torch.nn import functional as F
-from torch_geometric.nn import HeteroConv, SAGEConv
+from torch_geometric.nn import HeteroConv, SAGEConv, GATConv
 
 from typing import TYPE_CHECKING
 
@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from torch_geometric.data import HeteroData
 
 class GNNModel(nn.Module):
-    def __init__(self, hidden_dim, input_dim, metadata, num_layers=3, dropout=0.):
+    def __init__(self, hidden_dim, input_dim, metadata, model_type='sage', num_layers=3, dropout=0.):
         super().__init__()
         self.num_layers = num_layers
         self.dropout = nn.Dropout(dropout)
@@ -21,9 +21,17 @@ class GNNModel(nn.Module):
             in_dim = input_dim if i == 0 else hidden_dim
             self.convs.append(
                 HeteroConv({
-                    key: SAGEConv(in_dim, hidden_dim, normalize=True) for key in metadata[1]
+                    key: self._model_type(model_type, in_dim, hidden_dim) for key in metadata[1]
                 })
             )
+
+    def _model_type(self, model_type, in_dim, hidden_dim):
+        if model_type == 'sage':
+            return SAGEConv(in_dim, hidden_dim, normalize=True)
+        elif model_type == 'gat':
+            return GATConv(in_dim, hidden_dim, add_self_loops=False)
+        else:
+            raise ValueError("Expected model type 'sage' or 'gat'.")
 
     def forward(self, x_dict, edge_dict):
         for i, conv in enumerate(self.convs):
@@ -48,7 +56,8 @@ class JazzModel(nn.Module):
         hidden_dim: int,
         metadata: tuple,
         dropout: float = 0.0,
-        num_layers=3
+        num_layers=3,
+        model_type='sage'
     ):
         super().__init__()
 
@@ -56,7 +65,7 @@ class JazzModel(nn.Module):
         self.song_embed = nn.Embedding(num_songs, embed_dim)
         self.artist_embed = nn.Embedding(num_artists, embed_dim)
 
-        self.gnn = GNNModel(hidden_dim, embed_dim, metadata, num_layers, dropout)
+        self.gnn = GNNModel(hidden_dim, embed_dim, metadata, model_type, num_layers, dropout)
 
 
     def forward(self, x_dict, edge_dict, batch) -> torch.Tensor:
@@ -84,18 +93,20 @@ class NodeClassifier(nn.Module):
 
 
 class LinkPredictionModel(nn.Module):
-    def __init__(self, base_model: JazzModel):
+    def __init__(self, base_model: JazzModel, target_edge: tuple[str, str, str]):
         super().__init__()
         self.base_model = base_model
+        self.target_edge = target_edge
 
     def forward(self, batch) -> torch.Tensor:
-        x_dict, edge_index_dict, edge_label_index = batch.x_dict, batch.edge_index_dict, batch['performs'].edge_label_index
+        src, relation, dst = self.target_edge
+        x_dict, edge_index_dict, edge_label_index = batch.x_dict, batch.edge_index_dict, batch[relation].edge_label_index
         x_dict = self.base_model(x_dict, edge_index_dict, batch)
         # Do dot-product classification.
         #   Align the artist learned feature by the edge index, same for performance:
-        artists_to_performance = x_dict['artist'][edge_label_index[0]]
+        src_to_dst = x_dict[src][edge_label_index[0]]
         #   Same, for performances:
-        performance_to_artist = x_dict['performance'][edge_label_index[1]]
+        dst_to_src = x_dict[dst][edge_label_index[1]]
         #   Compute logits as dot-product
-        logits = (artists_to_performance * performance_to_artist).sum(-1)
+        logits = (src_to_dst * dst_to_src).sum(-1)
         return logits
