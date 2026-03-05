@@ -9,6 +9,8 @@ from torch_geometric.data import HeteroData
 from torch_geometric.utils import degree
 from torch_geometric.transforms import ToUndirected
 
+from jazz_graph.data.graph_transforms import prune_graph_from_masks
+
 
 
 class CreateTensors:
@@ -39,7 +41,7 @@ class CreateTensors:
             self._labels = self.load_parquet('performance_nodes.parquet')
             # NOTE: This is pretty fragile and not currently under a robust test.
             # We should prbably get the expceted label schema under control somewhere.
-            cols = [column for column in self._labels if column not in  {'release_date', 'recording_id'}]
+            cols = [column for column in self._labels if column not in  {'release_date', 'recording_id', 'release_group_id'}]
             self._labels = self._labels[cols].copy()
         return torch_values(self._labels)
 
@@ -122,43 +124,12 @@ def torch_index(df: pd.DataFrame) -> torch.Tensor:
         data = data.reshape(-1, 1)
     return torch.tensor(data)
 
-def prune_island_nodes(data: HeteroData):
+def prune_isolated_nodes(data: HeteroData):
     """Remove all nodes with degree 0."""
-    node_types, edge_types = data.metadata()
     masks = mask_node_degree(data, min_degree=1)
-    out = HeteroData()
-    # set the node data in out.
-    for node_type in node_types:
-        node_data = data[node_type]
-        for key, value in node_data.items():
-            mask = masks[node_type]
-            value = value[mask]
-            out[node_type][key] = value
-    # set the edge indexes in out.
-    for src, relation, dst in edge_types:
-        edge = data[src, relation, dst]
-        # currently assumes edge_index is only edge property.
-        src_indexes = edge.edge_index[0]
-        dst_indexes = edge.edge_index[1]
-        new_edge_index = torch.stack([
-            map_to_new_node_index(src_indexes, masks[src]),
-            map_to_new_node_index(dst_indexes, masks[dst])
-        ])
-        out[src, relation, dst].edge_index = new_edge_index
+    out = prune_graph_from_masks(data, masks)
     return out
-
-
-def map_to_new_node_index(edge_index, node_mask: torch.Tensor) -> torch.Tensor:
-    """Remap the values in edge index to point to values in a new tensor
-    that contains only values the nodes in nodes mask.
-    """
-    new_node_index = node_mask.to(torch.int64)
-    new_node_index[0] = new_node_index[0] - 1
-    new_node_index = torch.cumsum(new_node_index, dim=0)
-    edges_to_keep = node_mask[edge_index]
-    new_edge = new_node_index[edge_index]
-    return new_edge[edges_to_keep]
-
+    # set the node data in out.
 
 def mask_node_degree(data: HeteroData, min_degree=1):
     node_types, edge_types = data.metadata()
@@ -202,6 +173,6 @@ def make_jazz_data(create: CreateTensors) -> HeteroData:
 
     # TODO: maybe? add instrument attributes on edges.
     # data['artist', 'performs', 'performance'].edge_attr = <instrument>
-    data = prune_island_nodes(data)
+    data = prune_isolated_nodes(data)
     data = ToUndirected()(data)
     return data
