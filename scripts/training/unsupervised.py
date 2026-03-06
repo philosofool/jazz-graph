@@ -2,6 +2,7 @@
 
 from collections import Counter
 from functools import partial
+from pathlib import Path
 from math import exp
 import jsonlines
 import pandas as pd
@@ -11,10 +12,10 @@ import os
 
 from ignite.engine import Engine, Events
 from ignite.handlers import ProgressBar
-from ignite.metrics import Metric, RunningAverage
+from ignite.metrics import RunningAverage
 
 import torch
-from torch import nn
+from torch import layer_norm, nn, seed
 import torch.nn.functional as F
 import torch_geometric
 from torch_geometric.data import HeteroData
@@ -25,8 +26,12 @@ from torch_geometric import seed_everything
 
 from jazz_graph.data.graph_transforms import drop_edge_from_masks, prune_graph_from_masks
 from jazz_graph.data.reporting import inspect_degrees
+from jazz_graph.metrics.embedding_metrics import UniformityLoss
+from jazz_graph.metrics.embedding_metrics import EmbeddingStd
+from jazz_graph.metrics.embedding_metrics import AlignmentLoss
 from jazz_graph.training.logging import (
     ExperimentLogger,
+    load_model,
     save_embeddings_handler,
     save_checkpoint_handler,
     run_evaluator_handler,
@@ -44,17 +49,24 @@ class UnsupervisedJazzModel(nn.Module):
     def __init__(self, gnn_encoder: JazzModel, embeddings_dim, projection_dim):
         super().__init__()
         self.base_model = gnn_encoder
+        node_types = ['performance', 'artist', 'song']
         self.projections = nn.ModuleDict({
             key: nn.Sequential(
                 nn.Linear(embeddings_dim, projection_dim),
                 nn.ReLU(),
                 nn.Linear(projection_dim, projection_dim)
             )
-            for key in ['performance', 'artist', 'song']
+            for key in node_types
+        })
+        self.layer_normalization = nn.ModuleDict({
+            node_type: nn.LayerNorm(embeddings_dim) for node_type in ['performance', 'artist', 'song']
         })
 
     def encode(self, batch):
-        return self.base_model(batch.x_dict, batch.edge_index_dict, batch)
+        x_dict = self.base_model(batch.x_dict, batch.edge_index_dict, batch)
+        for node_type, layer_norm in self.layer_normalization.items():
+            x_dict[node_type] = layer_norm(x_dict[node_type])
+        return x_dict
 
     def project(self, x_dict):
         for key, projection in self.projections.items():
@@ -69,9 +81,9 @@ class UnsupervisedJazzModel(nn.Module):
 
 # Definte augmentation Strategies
 
-def drop_random_nodes_and_edges(data: HeteroData):
+def drop_random_nodes_and_edges(data: HeteroData, drop_edge_prob: float = .5):
     out = data.clone()
-    drop_edge_augmentation(data, out)
+    drop_edge_augmentation(data, out, drop_edge_prob=drop_edge_prob)
     # drop_node_augmentation(data, out)  # This would be complex: graphs need to align their node indecies in loss.
     return out
 
@@ -91,8 +103,8 @@ def drop_edge_augmentation(graph: HeteroData, dst_graph, drop_edge_prob: float =
     }
     return drop_edge_from_masks(graph, edge_masks, dst_graph)
 
-# NT_Xent loss. Used in SimCLR.
 
+# NT_Xent loss. Used in SimCLR.
 def nt_xent_loss(z1: torch.Tensor, z2: torch.Tensor, temperature: float = 0.5):
     """
     NT-Xent loss for SimCLR.
@@ -108,13 +120,10 @@ def nt_xent_loss(z1: torch.Tensor, z2: torch.Tensor, temperature: float = 0.5):
     # Concatenate both views: [2N, dim]
     z = torch.cat([z1, z2], dim=0)
 
-    # Compute similarity matrix: [2N, 2N]
     # We expect normalized embeddings in z, so dot product and cosine similarity are same:
     # sim[i,j] = cosine_similarity(z[i], z[j]) / temperature
     sim_matrix = torch.mm(z, z.t()) / temperature
 
-    # For each z1[i], the positive is z2[i] (at index i+N)
-    # For each z2[i], the positive is z1[i] (at index i)
     labels = torch.cat([
         torch.arange(batch_size) + batch_size,   # z1[i] matches z2[i]
         torch.arange(batch_size)                 # z2[i] matches z1[i]
@@ -131,171 +140,18 @@ def nt_xent_loss(z1: torch.Tensor, z2: torch.Tensor, temperature: float = 0.5):
 
     return loss
 
-# Some metrics
-
-def alignment_loss(z1, z2):
-    """
-    Measures how close positive pairs are.
-    Lower is better (pairs are aligned).
-    """
-    return (z1 - z2).pow(2).sum(dim=1).mean()
-
-
-def uniformity_loss(z, t=2):
-    """
-    Measures how uniformly distributed embeddings are on unit sphere.
-    Lower is better (more uniform).
-    """
-    sq_dist = torch.pdist(z, p=2).pow(2)
-    return sq_dist.mul(-t).exp().mean().log()
-
-
-class AlignmentLoss(Metric):
-    def __init__(self, output_transform=lambda x: x, device="cpu"):
-        self.alignment_sum = 0.0
-        self.count = 0
-        super().__init__(output_transform, device)
-
-    @torch.no_grad()
-    def update(self, output) -> None:
-        z1, z2 = output
-        # Sum of squared distances
-        self.alignment_sum += (z1 - z2).pow(2).sum(dim=1).mean().item()
-        self.count += z1.size(0)
-
-    def compute(self) -> float:
-        if self.count == 0:
-            return 0.0
-        return self.alignment_sum / self.count
-
-    def reset(self):
-        self.alignment_sum = 0.0
-        self.count = 0
-
-
-class UniformityLoss(Metric):
-    def __init__(self, t=2, output_transform=lambda x: x, device="cpu"):
-        self.uniformity_sum = 0.0
-        self.count = 0
-        self.t = t
-        super().__init__(output_transform, device)
-
-    def reset(self):
-        self.uniformity_sum = 0.0
-        self.count = 0
-
-    @torch.no_grad()
-    def update(self, output):
-        z1, z2 = output
-
-        # Compute uniformity for both views
-        for z in [z1, z2]:
-            sq_dist = torch.pdist(z, p=2).pow(2)
-            uniformity = sq_dist.mul(-self.t).exp().mean().log()
-            self.uniformity_sum += uniformity.item()
-            self.count += 1
-
-    def compute(self) -> float:
-        if self.count == 0:
-            return 0.0
-        return self.uniformity_sum / self.count
 
 # Thanks to Claude.ai for taking AlignmentLoss as template and giving this
 # evaluator of embedding variance.
-class EmbeddingStd(Metric):
-    """
-    Metric to track average standard deviation per dimension of embeddings.
-    Low values indicate potential collapse.
-    """
-    def __init__(self, output_transform=lambda x: x, device="cpu"):
-        self.sum_embeddings = None
-        self.sum_squared_embeddings = None
-        self.count = 0
-        super().__init__(output_transform, device)
-
-    @torch.no_grad()
-    def reset(self):
-        self.sum_embeddings = None
-        self.sum_squared_embeddings = None
-        self.count = 0
-
-    @torch.no_grad()
-    def update(self, output) -> None:
-        """
-        Args:
-            output: Embeddings tensor of shape [batch_size, embedding_dim]
-        """
-        embeddings = torch.concat(output)
-        batch_size = embeddings.size(0)
-
-        # Initialize on first batch
-        if self.sum_embeddings is None:
-            embed_dim = embeddings.size(1)
-            self.sum_embeddings = torch.zeros(embed_dim, device=embeddings.device)
-            self.sum_squared_embeddings = torch.zeros(embed_dim, device=embeddings.device)
-
-        # Accumulate statistics
-        self.sum_embeddings += embeddings.sum(dim=0)
-        self.sum_squared_embeddings += (embeddings ** 2).sum(dim=0)  # pyright: ignore [reportOperatorIssue]
-        self.count += batch_size
-
-    @torch.no_grad()
-    def compute(self) -> float:
-        """
-        Compute average standard deviation per dimension.
-
-        Using: std = sqrt(E[X^2] - E[X]^2)
-        """
-        if self.count == 0:
-            return 0.0
-
-        # Compute mean per dimension
-        mean = self.sum_embeddings / self.count   # pyright: ignore [reportOptionalOperand]
-
-        # Compute variance per dimension
-        mean_squared = self.sum_squared_embeddings / self.count   # pyright: ignore [reportOptionalOperand]
-        variance = mean_squared - (mean ** 2)
-
-        # Standard deviation per dimension
-        std_per_dim = torch.sqrt(variance.clamp(min=1e-8))  # Clamp to avoid NaN
-
-        # Average across dimensions
-        avg_std = std_per_dim.mean()
-
-        return avg_std.item()
-
-
-# # Usage:
-# from ignite.engine import Engine
-
-# # Attach to engine
-# embedding_std_metric = EmbeddingStd(output_transform=lambda out: out['embeddings'])
-# embedding_std_metric.attach(evaluator, 'embedding_std')
-
-# # Or if your output is directly embeddings:
-# embedding_std_metric = EmbeddingStd()
-# embedding_std_metric.attach(evaluator, 'embedding_std')
-
-# # Access after evaluation
-# evaluator.run(val_loader)
-# avg_std = evaluator.state.metrics['embedding_std']
-# print(f"Average embedding std: {avg_std:.4f}")
-
-# # Warning threshold
-# if avg_std < 0.01:
-#     print("WARNING: Possible embedding collapse!")
-
-# Define training.
 
 class UnsupervisedGNNTrainingLogic:
     """Define training step and eval steps."""
-    def __init__(self, model: UnsupervisedJazzModel, optimizer, temperature):
+    def __init__(self, model: UnsupervisedJazzModel, optimizer, temperature, drop_edge_prob: float = .5):
         self.device = next(model.parameters()).device
         self.model = model
         self.optimizer = optimizer
         self.temperature = temperature
-        # self.criterion = partial(nt_xent_loss, temperature=temperature)
-        self.augment = drop_random_nodes_and_edges
+        self.augment = lambda x: drop_random_nodes_and_edges(x, drop_edge_prob)
 
     def train_step(self, engine, batch: HeteroData) -> dict:
         """SimCLR-style unsuperivised training step on a graph.
@@ -319,11 +175,8 @@ class UnsupervisedGNNTrainingLogic:
             for node_type in z1_dict
         }
 
-        # print(f"z1 norms: {torch.norm(z1_dict['performance'], dim=1).mean():.3f}")
-        # print(f"z2 norms: {torch.norm(z2_dict['performance'], dim=1).mean():.3f}")
-
         total_loss = sum(losses.values())
-        total_loss.backward()
+        total_loss.backward()  # pyright: ignore [reportAttributeAccessIssue]
         self.optimizer.step()
         results = {}
         for node_type in z1_dict:
@@ -346,14 +199,36 @@ class UnsupervisedGNNTrainingLogic:
     #         loss = self.criterion(y_pred, y_true.to(torch.float))
     #     return {'y_pred': y_pred, 'y_true': y_true}
 
+def console_logging(evaluator: Engine, step_name: str, trainer: Engine):
+    metrics = evaluator.state.metrics
+    print(f"{step_name} - Epoch[{trainer.state.epoch:03}]")
+    def order_keys(key):
+        if 'performance' in key:
+            return 0
+        if 'artist' in key:
+            return 1
+        if 'song' in key:
+            return 2
+        return 3
+    metrics = sorted(metrics.items(),  key=lambda x: order_keys(x[0]))
+    for i, (metric, value) in enumerate(metrics):
+        if i % 4 == 0 and i != 0:
+            print()
+        print(f"  Avg. {metric}: {value:.3f}", end='; ')
 
-def make_trainer(model, temperature: float):
-    # criterion = nn.BCEWithLogitsLoss()
+    print()
+
+def make_trainer(model, optimizer, experiment_logger: ExperimentLogger):
     node_types = ['performance', 'artist', 'song']
-    optimizer = torch.optim.Adam(model.parameters(), lr=experiment_config['lr'])
-    trainer_logic = UnsupervisedGNNTrainingLogic(model, optimizer, temperature)
+    experiment_config = experiment_logger.load_config()
+    if experiment_config is None:
+        raise ValueError("Logger must have an experiment config.")
 
-    experiment_logger = ExperimentLogger(root='/workspace/experiments', run_name=f'gnn_simCLR_{os.path.basename(models_dir)}', config=experiment_config)
+    trainer_logic = UnsupervisedGNNTrainingLogic(
+        model,
+        optimizer,
+        experiment_config['temperature'],
+        experiment_config['drop_edge_prob'])
 
     trainer = Engine(trainer_logic.train_step)
 
@@ -374,26 +249,20 @@ def make_trainer(model, temperature: float):
             ),
         }
 
-    # Create all metrics
     metrics = {}
     for node_type in node_types:
         metrics.update(create_metrics_for_node_type(node_type))
 
-    # Attach
     for name, metric in metrics.items():
         metric.attach(trainer, name)
 
     progress_bar = ProgressBar()
     progress_bar.attach(trainer, metric_names=[f'{node_type}_loss' for node_type in node_types])
 
-    # trainer.add_event_handler(Events.EPOCH_COMPLETED, run_evaluator_handler, train_evaluator, train_loader, "Training")
     trainer.add_event_handler(Events.EPOCH_COMPLETED, console_logging, 'Training', trainer)
-    # trainer.add_event_handler(Events.EPOCH_COMPLETED, run_evaluator_handler, dev_evaluator, dev_loader)
     trainer.add_event_handler(Events.EPOCH_COMPLETED, log_experiment_handler, experiment_logger, 'train', trainer)
-    # dev_evaluator.add_event_handler(Events.EPOCH_COMPLETED, log_experiment_handler, experiment_logger, 'dev', trainer)
-    # dev_evaluator.add_event_handler(Events.EPOCH_COMPLETED, console_logging, 'Valiation', trainer)
-    trainer.add_event_handler(Events.COMPLETED, save_embeddings_handler, experiment_logger, model)
-    trainer.add_event_handler(Events.COMPLETED, experiment_logger.save_checkpoint)
+    # trainer.add_event_handler(Events.COMPLETED, save_embeddings_handler, experiment_logger, model)
+    trainer.add_event_handler(Events.COMPLETED, save_checkpoint_handler, experiment_logger, model, optimizer)
     return trainer
 
 def train_indecies(mask):
@@ -405,60 +274,82 @@ def train_indecies(mask):
 
 
 if __name__ == '__main__':
-
-
+    seed_everything(42)
     models_dir = '/workspace/local_data/graph_parquet_proto'
     assert os.path.exists(models_dir)
-
-    experiment_config = {
-        'data_config': {
-            'dataset': models_dir,
-            # Sampling is important here. We want to make sure that the neighborhodd
-            # for high degree nodes doesn't become too noisy. Artist and song nodes can
-            # be very high degree. Basially, get a sizable neighborhood for each node to
-            # reduce this noise.
-            'sampling': {'num_neighbors': [25, 15, 8]}
-        },
-        'model': {
-            'hidden_dim': 128,
-            'embed_dim': 64,
-            'projection_dim': 64,
-            # NOTE: sage seems to need high regularization, >.4
-            #       gat does better with less, ~=.2
-            'dropout': 0.2,
-            'model_type': 'gat'
-        },
-        'dataset': models_dir,
-        'lr': .03,
-        'batch_size': 128,
-        'temperature': .5
-    }
-    model_config = experiment_config['model']
-    data_config = experiment_config['data_config']
-
     create = CreateTensors(models_dir)
     data = make_jazz_data(create)
 
+    run_to_load: str|None = None
+
+    if run_to_load:
+        if run_to_load == 'most_recent':
+            run_to_load = max(Path("/workspace/experiments").iterdir(), key=lambda p: p.stat().st_mtime)
+        experiment_logger = ExperimentLogger.from_run_dir(run_to_load)
+        experiment_config = experiment_logger.load_config()
+        if experiment_config is None:
+            raise ValueError("Only experiment loggers with configs can be used.")
+    else:
+        experiment_config = {
+            'data_config': {
+                'dataset': models_dir,
+                # Sampling is important here. We want to make sure that the neighborhodd
+                # for high degree nodes doesn't become too noisy. Artist and song nodes can
+                # be very high degree. Basially, get a sizable neighborhood for each node to
+                # reduce this noise.
+                'sampling': {'num_neighbors': [25, 15, 8, 8]}
+            },
+            'model': {
+                'num_performances': data['performance'].num_nodes,
+                'num_artists': data['artist'].num_nodes,
+                'num_songs': data['song'].num_nodes,
+                'hidden_dim': 128,
+                'embed_dim': 64,
+                'projection_dim': 64,
+                'dropout': 0.0005,
+                'model_type': 'sage',
+                'num_layers': 3,
+            },
+            'drop_edge_prob': .5,
+            'dataset': models_dir,
+            'lr': .001,
+            'batch_size': 256,
+            'temperature': .2
+        }
+        experiment_logger = ExperimentLogger(root='/workspace/experiments', run_name=f'gnn_simCLR_{os.path.basename(models_dir)}', config=experiment_config)
+
+    model_config = experiment_config['model']
+    data_config = experiment_config['data_config']
+
+
     model = UnsupervisedJazzModel(
         JazzModel(
-            data['performance'].num_nodes,
-            data['artist'].num_nodes,
-            data['song'].num_nodes,
+            num_performances=model_config['num_performances'],
+            num_artists=model_config['num_artists'],
+            num_songs=model_config['num_songs'],
             hidden_dim=model_config['hidden_dim'],
             embed_dim=model_config['embed_dim'],
             dropout=model_config['dropout'],
             metadata=data.metadata(),
+            num_layers=model_config['num_layers'],
             model_type=model_config['model_type']
         ),
         embeddings_dim=model_config['hidden_dim'],
         projection_dim=model_config['projection_dim']
     )
+    optimizer = torch.optim.Adam(model.parameters(), lr=experiment_config['lr'])
+
+    if run_to_load:
+        checkpoint = experiment_logger.load_checkpoint()
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
     num_neighbors = data_config['sampling']['num_neighbors']
     train_loader = NeighborLoader(
         data,
         num_neighbors=num_neighbors,
         batch_size=experiment_config['batch_size'],
-        input_nodes=('performance', train_indecies(data['performance'].train_mask)),
+        input_nodes=('artist', torch.arange(data['artist'].num_nodes)),
         shuffle=True
     )
     # dev_loader = NeighborLoader(
@@ -468,5 +359,5 @@ if __name__ == '__main__':
     #     input_nodes=('performance', train_indicies(data['performance'].dev_mask)),
     #     shuffle=True
     # )
-    trainer = make_trainer(model, experiment_config['temperature'])
-    trainer.run(train_loader, max_epochs=2)
+    trainer = make_trainer(model, optimizer, experiment_logger)
+    trainer.run(train_loader, max_epochs=50)

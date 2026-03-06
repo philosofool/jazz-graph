@@ -71,10 +71,15 @@ class ExperimentLogger:
         with open(self.metrics_path, "a") as f:
             f.write(json.dumps(record) + "\n")
 
-    def save_checkpoint(self, model, name="last.pt"):
+    def save_checkpoint(self, model, optimizer, name="last.pt"):
         ckpt_dir = self.run_dir / "checkpoints"
         ckpt_dir.mkdir(exist_ok=True)
         path = ckpt_dir / name
+        optmizer_state_dict = optimizer.state_dict() if optimizer is not None else None
+        checkpoint = {
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict()
+        }
         torch.save(model.state_dict(), path)
 
     def save_embeddings(self, model: NodeClassifier | LinkPredictionModel):
@@ -100,6 +105,65 @@ class ExperimentLogger:
 
         print(f"Saved embeddings to {self.run_dir}")
 
+    @classmethod
+    def from_run_dir(cls, run_dir):
+        """
+        Create a logger instance from an existing run directory.
+
+        Useful for loading a previously saved experiment to continue logging
+        or to access its config/metrics.
+
+        Args:
+            run_dir: Path to existing run directory (str or Path)
+
+        Returns:
+            ExperimentLogger instance pointing to the existing run
+        """
+        logger = cls.__new__(cls)  # Create instance without calling __init__
+        logger.run_dir = Path(run_dir)
+
+        if not logger.run_dir.exists():
+            raise ValueError(f"Run directory does not exist: {run_dir}")
+
+        logger.metrics_path = logger.run_dir / "metrics.jsonl"
+        return logger
+
+    def load_config(self) -> dict | None:
+        """Load config from run directory."""
+        config_path = self.run_dir / "config.json"
+
+        if not config_path.exists():
+            print(f"No config found at {config_path}")
+            return None
+
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+
+        return config
+
+    def load_metrics(self):
+        """Load all metrics from run directory as list of dicts."""
+        if not self.metrics_path.exists():
+            print(f"No metrics found at {self.metrics_path}")
+            return []
+
+        metrics = []
+        with open(self.metrics_path, 'r') as f:
+            for line in f:
+                metrics.append(json.loads(line))
+
+        return metrics
+
+    def load_checkpoint(self, name="last.pt"):
+        """Load checkpoint from run directory."""
+        ckpt_path = self.run_dir / "checkpoints" / name
+
+        if not ckpt_path.exists():
+            raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
+
+        checkpoint = torch.load(ckpt_path, map_location='cpu')
+        return checkpoint
+
 
 ## Handlers
 
@@ -118,8 +182,14 @@ def save_embeddings_handler(engine, logger: ExperimentLogger, model):
     """Save embeddings at end of training."""
     logger.save_embeddings(model)
 
-def save_checkpoint_handler(engine, logger: ExperimentLogger, model):
-    logger.save_checkpoint(model)
+def save_checkpoint_handler(engine, logger: ExperimentLogger, model, optimizer):
+    """Save checkpoint at end of epoch."""
+    logger.save_checkpoint(
+        model,
+        optimizer=optimizer,
+        name="last.pt"
+    )
+
 
 def log_experiment_handler(engine, logger: ExperimentLogger, split, trainer: Engine):
     """Log experiment results (usually each epoch) to files."""
