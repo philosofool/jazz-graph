@@ -15,7 +15,7 @@ from ignite.handlers import ProgressBar
 from ignite.metrics import RunningAverage
 
 import torch
-from torch import layer_norm, nn, seed
+from torch import layer_norm, seed
 import torch.nn.functional as F
 import torch_geometric
 from torch_geometric.data import HeteroData
@@ -24,11 +24,12 @@ from torch_geometric.nn import GraphConv, SAGEConv, to_hetero, HeteroConv
 from torch_geometric import transforms as T
 from torch_geometric import seed_everything
 
-from jazz_graph.data.graph_transforms import drop_edge_from_masks, prune_graph_from_masks
 from jazz_graph.data.reporting import inspect_degrees
 from jazz_graph.metrics.embedding_metrics import UniformityLoss
 from jazz_graph.metrics.embedding_metrics import EmbeddingStd
 from jazz_graph.metrics.embedding_metrics import AlignmentLoss
+from jazz_graph.model.model import UnsupervisedJazzModel
+from jazz_graph.training.augmentation import drop_random_nodes_and_edges
 from jazz_graph.training.logging import (
     ExperimentLogger,
     load_model,
@@ -43,69 +44,8 @@ from jazz_graph.data.graph_builder import CreateTensors, prune_isolated_nodes, m
 from jazz_graph.model.model import JazzModel, LinkPredictionModel, NodeClassifier
 from jazz_graph.training.logging import plot_logs
 
-# Define a model
-
-class UnsupervisedJazzModel(nn.Module):
-    def __init__(self, gnn_encoder: JazzModel, embeddings_dim, projection_dim):
-        super().__init__()
-        self.base_model = gnn_encoder
-        node_types = ['performance', 'artist', 'song']
-        self.projections = nn.ModuleDict({
-            key: nn.Sequential(
-                nn.Linear(embeddings_dim, projection_dim),
-                nn.ReLU(),
-                nn.Linear(projection_dim, projection_dim)
-            )
-            for key in node_types
-        })
-        self.layer_normalization = nn.ModuleDict({
-            node_type: nn.LayerNorm(embeddings_dim) for node_type in ['performance', 'artist', 'song']
-        })
-
-    def encode(self, batch):
-        x_dict = self.base_model(batch.x_dict, batch.edge_index_dict, batch)
-        for node_type, layer_norm in self.layer_normalization.items():
-            x_dict[node_type] = layer_norm(x_dict[node_type])
-        return x_dict
-
-    def project(self, x_dict):
-        for key, projection in self.projections.items():
-            x_dict[key] = projection(x_dict[key])
-        x_dict = {key: F.normalize(tensor, dim=-1) for key, tensor in x_dict.items()}
-        return x_dict
-
-    def forward(self, batch):
-        x_dict = self.encode(batch)
-        x_dict = self.project(x_dict)
-        return x_dict
-
-# Definte augmentation Strategies
-
-def drop_random_nodes_and_edges(data: HeteroData, drop_edge_prob: float = .5):
-    out = data.clone()
-    drop_edge_augmentation(data, out, drop_edge_prob=drop_edge_prob)
-    # drop_node_augmentation(data, out)  # This would be complex: graphs need to align their node indecies in loss.
-    return out
-
-def drop_node_augmentation(src_graph: HeteroData, dst_graph: HeteroData, drop_node_prob: float = .1):
-    node_types, edge_types = src_graph.metadata()
-    masks = {
-        node_type: torch.rand(src_graph[node_type].num_nodes) > drop_node_prob
-        for node_type in node_types
-    }
-    prune_graph_from_masks(src_graph, masks)
-
-def drop_edge_augmentation(graph: HeteroData, dst_graph, drop_edge_prob: float = .2):
-    edge_types = graph.metadata()[1]
-    edge_masks = {
-        edge_type: torch.rand(graph[edge_type].edge_index.size(1)) > drop_edge_prob
-        for edge_type in edge_types
-    }
-    return drop_edge_from_masks(graph, edge_masks, dst_graph)
-
-
 # NT_Xent loss. Used in SimCLR.
-def nt_xent_loss(z1: torch.Tensor, z2: torch.Tensor, temperature: float = 0.5):
+def nt_xent_loss(z1: torch.Tensor, z2: torch.Tensor, temperature: float = 0.5) -> torch.Tensor:
     """
     NT-Xent loss for SimCLR.
 
@@ -308,7 +248,7 @@ if __name__ == '__main__':
                 'projection_dim': 64,
                 'dropout': 0.0005,
                 'model_type': 'sage',
-                'num_layers': 3,
+                'num_layers': 4,
             },
             'drop_edge_prob': .5,
             'dataset': models_dir,
