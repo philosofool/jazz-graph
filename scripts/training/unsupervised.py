@@ -1,6 +1,7 @@
 
 
 from collections import Counter
+from collections.abc import Callable
 from functools import partial
 from pathlib import Path
 from math import exp
@@ -25,11 +26,12 @@ from torch_geometric import transforms as T
 from torch_geometric import seed_everything
 
 from jazz_graph.data.reporting import inspect_degrees
+from jazz_graph.etl.transforms import map_array, map_by_index
 from jazz_graph.metrics.embedding_metrics import UniformityLoss
 from jazz_graph.metrics.embedding_metrics import EmbeddingStd
 from jazz_graph.metrics.embedding_metrics import AlignmentLoss
 from jazz_graph.model.model import UnsupervisedJazzModel
-from jazz_graph.training.augmentation import drop_random_nodes_and_edges
+from jazz_graph.training.views import drop_random_nodes_and_edges
 from jazz_graph.training.logging import (
     ExperimentLogger,
     load_model,
@@ -43,6 +45,7 @@ from jazz_graph.training.logging import (
 from jazz_graph.data.graph_builder import CreateTensors, prune_isolated_nodes, make_jazz_data
 from jazz_graph.model.model import JazzModel, LinkPredictionModel, NodeClassifier
 from jazz_graph.training.logging import plot_logs
+from jazz_graph.training.views import MatchAlbumAugmentation
 
 # NT_Xent loss. Used in SimCLR.
 def nt_xent_loss(z1: torch.Tensor, z2: torch.Tensor, temperature: float = 0.5) -> torch.Tensor:
@@ -84,14 +87,65 @@ def nt_xent_loss(z1: torch.Tensor, z2: torch.Tensor, temperature: float = 0.5) -
 # Thanks to Claude.ai for taking AlignmentLoss as template and giving this
 # evaluator of embedding variance.
 
-class UnsupervisedGNNTrainingLogic:
+class UnsupervisedGNNTrainingLogicMatchAlbum:
     """Define training step and eval steps."""
-    def __init__(self, model: UnsupervisedJazzModel, optimizer, temperature, drop_edge_prob: float = .5):
+    def __init__(self, model: UnsupervisedJazzModel, optimizer, temperature, augment: MatchAlbumAugmentation):
         self.device = next(model.parameters()).device
         self.model = model
         self.optimizer = optimizer
         self.temperature = temperature
-        self.augment = lambda x: drop_random_nodes_and_edges(x, drop_edge_prob)
+        self.augment = augment
+
+    def train_step(self, engine, batch: HeteroData) -> dict:
+        """SimCLR-style unsuperivised training step on a graph.
+
+        The approach of SimCLR is to perform two random augementations on an input.
+        The model then learns embeddings by predicting both augmented graphs.
+        The task is to predict which nodes from the augmented batches were the
+        same source node. The result is that similar nodes should have nearby
+        encodeings while dissimilar nodes have distant ones.
+        """
+        self.model.train()
+        self.optimizer.zero_grad()
+        batch.to(self.device)
+
+        h1_dict: dict[str, torch.Tensor] = self.model.encode(batch)
+        # h2_dict: dict[str, torch.Tensor] = self.model.encode(self.augment(batch))
+        z1_dict: dict[str, torch.Tensor] = self.model.project(h1_dict)
+        album_match_idx = self.augment.map_nodes(batch)
+        h2_dict = h1_dict
+        z2_dict: dict[str, torch.Tensor] = z1_dict
+        h2_dict['performance'] = h1_dict['performance'][album_match_idx]
+        z2_dict['performance'] = z2_dict['performance'][album_match_idx]
+        loss = nt_xent_loss(z1_dict['performance'], z2_dict['performance'], self.temperature)
+        loss.backward()
+        self.optimizer.step()
+        # get some metrics
+        with torch.no_grad():
+            losses = {
+                node_type: nt_xent_loss(z1_dict[node_type], z2_dict[node_type], self.temperature)
+                for node_type in ['artist', 'song']
+            }
+        losses['performance'] = loss
+        # total_loss = sum(losses.values())
+        # total_loss.backward()  # pyright: ignore [reportAttributeAccessIssue]
+        results = {}
+        for node_type in z1_dict:
+            results[node_type] = {
+                'loss': losses[node_type].item(),
+                'h1': h1_dict[node_type].detach(),
+                'h2': h2_dict[node_type].detach()
+            }
+        return results
+
+class UnsupervisedGNNTrainingLogic:
+    """Define training step and eval steps."""
+    def __init__(self, model: UnsupervisedJazzModel, optimizer, temperature, augment: Callable[[HeteroData], HeteroData]):
+        self.device = next(model.parameters()).device
+        self.model = model
+        self.optimizer = optimizer
+        self.temperature = temperature
+        self.augment = augment
 
     def train_step(self, engine, batch: HeteroData) -> dict:
         """SimCLR-style unsuperivised training step on a graph.
@@ -111,7 +165,7 @@ class UnsupervisedGNNTrainingLogic:
         z1_dict: dict[str, torch.Tensor] = self.model.project(h1_dict)
         z2_dict: dict[str, torch.Tensor] = self.model.project(h2_dict)
         losses = {
-            node_type:  nt_xent_loss(z1_dict[node_type], z2_dict[node_type], self.temperature)
+            node_type: nt_xent_loss(z1_dict[node_type], z2_dict[node_type], self.temperature)
             for node_type in z1_dict
         }
 
@@ -163,12 +217,14 @@ def make_trainer(model, optimizer, experiment_logger: ExperimentLogger):
     experiment_config = experiment_logger.load_config()
     if experiment_config is None:
         raise ValueError("Logger must have an experiment config.")
+    model_dir = experiment_config['data_config']['dataset']
 
-    trainer_logic = UnsupervisedGNNTrainingLogic(
+    trainer_logic = UnsupervisedGNNTrainingLogicMatchAlbum(
         model,
         optimizer,
         experiment_config['temperature'],
-        experiment_config['drop_edge_prob'])
+        make_match_album_augmentation(models_dir)
+    )
 
     trainer = Engine(trainer_logic.train_step)
 
@@ -212,14 +268,35 @@ def train_indecies(mask):
     all_node_indicies = torch.arange(num_nodes)
     return all_node_indicies[mask]
 
+def make_match_album_augmentation(path_to_node_data) -> MatchAlbumAugmentation:
+    graph = make_jazz_data(CreateTensors(path_to_node_data))
+    data = pd.read_parquet(Path(path_to_node_data) / 'performance_nodes.parquet')
+    albums = data.release_group_id.unique()
+    albums_lookup = {album: i for i, album in enumerate(albums)}
+    rec_to_album_lookup = data[['recording_id', 'release_group_id']].set_index('recording_id').release_group_id
+
+    print(data.head())
+    print(graph['performance'].x[:5])
+    performance_ids = graph['performance'].x[:, 1].numpy()
+    album_in_graph = rec_to_album_lookup.loc[performance_ids]
+    rec_to_album_index = map_array(album_in_graph, albums_lookup)
+    rec_to_album_edge = np.stack(
+        [np.arange(rec_to_album_index.size), rec_to_album_index], axis=0)
+    assert rec_to_album_edge.shape[0] == 2, "Stack should create 2 x num_nodes."
+    rec_to_album_edge = torch.from_numpy(rec_to_album_edge)
+    return MatchAlbumAugmentation(recording_album_edge=rec_to_album_edge)
+
 
 if __name__ == '__main__':
+
     seed_everything(42)
     models_dir = '/workspace/local_data/graph_parquet_proto'
     assert os.path.exists(models_dir)
     create = CreateTensors(models_dir)
     data = make_jazz_data(create)
 
+    make_match_album_augmentation(models_dir)
+    # assert False
     run_to_load: str|None = None
 
     if run_to_load:

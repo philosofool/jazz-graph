@@ -2,6 +2,7 @@ from __future__ import annotations
 import torch
 from torch import nn
 from torch.nn import functional as F
+import torch.nn.functional as F
 from torch_geometric.nn import HeteroConv, SAGEConv, GATConv
 
 from typing import TYPE_CHECKING
@@ -110,3 +111,69 @@ class LinkPredictionModel(nn.Module):
         #   Compute logits as dot-product
         logits = (src_to_dst * dst_to_src).sum(-1)
         return logits
+
+
+# Define a model
+
+class UnsupervisedJazzModel(nn.Module):
+    """SimCLR style self-supervised learning model for jazz graphs."""
+    def __init__(self, gnn_encoder: JazzModel, embeddings_dim, projection_dim):
+        super().__init__()
+        self.base_model = gnn_encoder
+        node_types = ['performance', 'artist', 'song']
+        self.projections = nn.ModuleDict({
+            key: nn.Sequential(
+                nn.Linear(embeddings_dim, projection_dim),
+                nn.ReLU(),
+                nn.Linear(projection_dim, projection_dim)
+            )
+            for key in node_types
+        })
+        self.layer_normalization = nn.ModuleDict({
+            node_type: nn.LayerNorm(embeddings_dim) for node_type in ['performance', 'artist', 'song']
+        })
+
+    @classmethod
+    def from_config(cls, config: dict):
+        model_config = config['model']
+        metadata = (
+            ['performance', 'song', 'artist'],
+            [
+                ('artist', 'performs', 'performance'),
+                ('performance', 'performing', 'song'),
+                ('artist', 'composed', 'song'),
+                ('performance', 'rev_performs', 'artist'),
+                ('song', 'rev_performing', 'performance'),
+                ('song', 'rev_composed', 'artist')])
+        return cls(
+            JazzModel(
+                num_performances=model_config['num_performances'],
+                num_artists=model_config['num_artists'],
+                num_songs=model_config['num_songs'],
+                hidden_dim=model_config['hidden_dim'],
+                embed_dim=model_config['embed_dim'],
+                dropout=model_config['dropout'],
+                metadata=metadata,
+                num_layers=model_config['num_layers'],
+                model_type=model_config['model_type']
+            ),
+            embeddings_dim=model_config['hidden_dim'],
+            projection_dim=model_config['projection_dim']
+        )
+
+    def encode(self, batch):
+        x_dict = self.base_model(batch.x_dict, batch.edge_index_dict, batch)
+        for node_type, layer_norm in self.layer_normalization.items():
+            x_dict[node_type] = layer_norm(x_dict[node_type])
+        return x_dict
+
+    def project(self, x_dict):
+        for key, projection in self.projections.items():
+            x_dict[key] = projection(x_dict[key])
+        x_dict = {key: F.normalize(tensor, dim=-1) for key, tensor in x_dict.items()}
+        return x_dict
+
+    def forward(self, batch):
+        x_dict = self.encode(batch)
+        x_dict = self.project(x_dict)
+        return x_dict
