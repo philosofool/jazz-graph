@@ -36,6 +36,12 @@ class CreateTensors:
             self._songs = self.load_parquet('song_nodes.parquet')
         return torch_values(self._songs)
 
+    def album_ids(self) -> torch.Tensor:
+        if self._performances is None:
+            self.performances()
+        assert self._performances is not None, "performances method is expected to create the _performances data."
+        return torch.tensor(self._performances.release_group_id.values)
+
     def labels(self) -> torch.Tensor:
         if getattr(self, '_labels', None) is None:
             self._labels = self.load_parquet('performance_nodes.parquet')
@@ -108,14 +114,6 @@ class CreateTensors:
             self._performance_song_edges = df[['recording_id', 'work_id']].copy()
         return torch_values(self._performance_song_edges).T
 
-    def same_album_edges(self) -> torch.Tensor:
-        if self._performances is None:
-            self.performances()
-        performance_data = self._performances
-        perf_same_album_perf_edges = make_inter_node_edges(performance_data, 'release_group_id')
-        return torch.tensor(perf_same_album_perf_edges)
-
-
 
 def torch_values(df: pd.DataFrame) -> torch.Tensor:
     """Convert values in the dataframe to a single tensor."""
@@ -170,12 +168,12 @@ def make_jazz_data(create: CreateTensors) -> HeteroData:
     data['song'].x = create.songs()
     data['artist'].x = create.artists()
 
+    data['artist', 'composed', 'song'].edge_index = create.artist_song_edges()
     data['artist', 'performs', 'performance'].edge_index = create.artist_performance_edges()
     data['performance', 'performing', 'song'].edge_index = create.performance_song_edges()
-    data['artist', 'composed', 'song'].edge_index = create.artist_song_edges()
-    data['performance', 'same_album', 'performance'].edge_index = create.same_album_edges()
 
     data['performance'].y = create.labels()
+    data['performance'].album_id = create.album_ids()
     data['performance'].train_mask = create.train_mask()
     data['performance'].dev_mask = create.dev_mask()
     data['performance'].test_mask = create.test_mask()
@@ -184,6 +182,7 @@ def make_jazz_data(create: CreateTensors) -> HeteroData:
     # data['artist', 'performs', 'performance'].edge_attr = <instrument>
     data = prune_isolated_nodes(data)
     data = ToUndirected()(data)
+    data.validate()
     return data
 
 def make_inter_node_edges(data: pd.DataFrame, link_on: str) -> np.ndarray:

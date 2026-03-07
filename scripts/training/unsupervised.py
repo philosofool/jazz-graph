@@ -45,7 +45,7 @@ from jazz_graph.training.logging import (
 from jazz_graph.data.graph_builder import CreateTensors, prune_isolated_nodes, make_jazz_data
 from jazz_graph.model.model import JazzModel, LinkPredictionModel, NodeClassifier
 from jazz_graph.training.logging import plot_logs
-from jazz_graph.training.views import MatchAlbumAugmentation
+from jazz_graph.training.views import MatchAlbumAugmentation, performance_album_map
 
 # NT_Xent loss. Used in SimCLR.
 def nt_xent_loss(z1: torch.Tensor, z2: torch.Tensor, temperature: float = 0.5) -> torch.Tensor:
@@ -89,12 +89,15 @@ def nt_xent_loss(z1: torch.Tensor, z2: torch.Tensor, temperature: float = 0.5) -
 
 class UnsupervisedGNNTrainingLogicMatchAlbum:
     """Define training step and eval steps."""
-    def __init__(self, model: UnsupervisedJazzModel, optimizer, temperature, augment: MatchAlbumAugmentation):
+    def __init__(self, model: UnsupervisedJazzModel, optimizer, temperature):
         self.device = next(model.parameters()).device
         self.model = model
         self.optimizer = optimizer
         self.temperature = temperature
-        self.augment = augment
+        # self.map_nodes = map_nodes
+
+    def map_nodes(self, batch):
+        return performance_album_map(batch)
 
     def train_step(self, engine, batch: HeteroData) -> dict:
         """SimCLR-style unsuperivised training step on a graph.
@@ -112,7 +115,7 @@ class UnsupervisedGNNTrainingLogicMatchAlbum:
         h1_dict: dict[str, torch.Tensor] = self.model.encode(batch)
         # h2_dict: dict[str, torch.Tensor] = self.model.encode(self.augment(batch))
         z1_dict: dict[str, torch.Tensor] = self.model.project(h1_dict)
-        album_match_idx = self.augment.map_nodes(batch)
+        album_match_idx = self.map_nodes(batch)
         h2_dict = h1_dict
         z2_dict: dict[str, torch.Tensor] = z1_dict
         h2_dict['performance'] = h1_dict['performance'][album_match_idx]
@@ -222,8 +225,8 @@ def make_trainer(model, optimizer, experiment_logger: ExperimentLogger):
     trainer_logic = UnsupervisedGNNTrainingLogicMatchAlbum(
         model,
         optimizer,
-        experiment_config['temperature'],
-        make_match_album_augmentation(models_dir)
+        experiment_config['temperature']
+        # make_match_album_augmentation(models_dir)
     )
 
     trainer = Engine(trainer_logic.train_step)
@@ -377,4 +380,4 @@ if __name__ == '__main__':
     #     shuffle=True
     # )
     trainer = make_trainer(model, optimizer, experiment_logger)
-    trainer.run(train_loader, max_epochs=50)
+    trainer.run(train_loader, max_epochs=35)

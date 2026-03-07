@@ -8,13 +8,15 @@ from torch_geometric.data import HeteroData
 from torch_cluster import random_walk
 
 
-def map_nodes(self, x_dict):
-    perf = x_dict['performance']
-    n_ids = perf.n_id
-    edge_mask = torch.isin(self.recording_album_edge[0], n_ids)
-    recording_album_edge = self.recording_album_edge[:, edge_mask]
-    mapped_nodes = random_walk(recording_album_edge[0], recording_album_edge[1], n_ids, 2)
-    return n_ids[:, 1]
+def performance_album_map(batch: HeteroData):
+    """Return the index of the input batch after a random walk."""
+    performances = torch.arange(batch['performance'].num_nodes)
+    recordings = batch['performance'].album_id + performances.size(0)
+    row = torch.concat([performances, recordings])
+    col = torch.concat([recordings, performances])
+    mapped_nodes = random_walk(row, col, performances, 2)
+    assert isinstance(mapped_nodes, torch.Tensor)
+    return mapped_nodes[:, 2]
 
 
 class MatchAlbumAugmentation:
@@ -54,9 +56,6 @@ class MatchAlbumAugmentation:
             tensor = tensor[map_node_idx[:tensor.size(0)]]
             out['performance'][feature] = tensor.clone()
         return out
-
-
-
 
 
 def drop_edge_augmentation(graph: HeteroData, dst_graph, drop_edge_prob: float = .2):
