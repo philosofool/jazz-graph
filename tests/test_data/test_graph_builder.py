@@ -115,7 +115,7 @@ class TestCreateTensors:
         expected = np.array([[0, 0, 1], [1, 0, 1], [0, 1, 1]]).T
         np.testing.assert_array_equal(result, expected)
 
-def test_prune_island_nodes(hetero_data):
+def test_prune_isolated_nodes(hetero_data):
     data = hetero_data
     result = prune_isolated_nodes(data)
 

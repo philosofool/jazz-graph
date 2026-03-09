@@ -3,7 +3,7 @@ import torch
 from torch_geometric.data import HeteroData
 import numpy as np
 
-from jazz_graph.data.graph_builder import mask_node_degree
+from jazz_graph.data.graph_transforms import mask_node_degree, prune_graph_from_masks
 from jazz_graph.data.graph_transforms import drop_edge_from_masks, extend_graph, map_to_new_node_index
 
 import pytest
@@ -86,3 +86,35 @@ def test_mask_node_degree(hetero_data):
 
     result = mask_node_degree(hetero_data, min_degree=2)
     assert torch.all(result['artist'] ==  torch.tensor([0, 1, 0, 1])), "Artist 3 is an island, artist 0 has one composition edge."
+
+
+def test_prune_graph_from_masks(hetero_data):
+    # NOTE: this is currently the same as test_graph_builder.test_prune_isolated_nodes
+    # except that we contruct the mask directly.
+    mask = {
+        'artist': torch.tensor([1, 1, 0, 1]),
+        'performance': torch.tensor([1, 1, 1, 0, 1]),
+        'song': torch.tensor([1, 0, 1])
+    }
+    result = prune_graph_from_masks(hetero_data, mask)
+    assert torch.all(result['artist'].x == torch.tensor([3, 1, 2]))
+    assert torch.all(result['song'].x == torch.tensor([10, 11]))
+    assert torch.all(result['performance'].x == torch.tensor([20, 21, 22, 23]))
+    assert torch.all(result['performance'].y == torch.tensor([1, 2, 3, 5]) / 10), "All features associated with performance should be updated."
+    assert torch.all(result['artist'].y == torch.tensor([3, 5, 9], dtype=torch.float32)), "Features in artist labels should be dropped where the node is an island."
+
+    expected_performs = torch.tensor([
+        [1,   1,  2,  2,  2],  # artist formerly at 3 is left shifted one.
+        [0, 1, 0, 1, 2]   # These are all he same.
+    ])
+    expected_performing = torch.tensor([
+        [0, 1, 2, 3], # performance formerly at 4 is left shifted.
+        [0, 0, 1, 1]  # song formerly at 2 is left shited.
+    ])
+    expected_composed = torch.tensor([
+        [0, 1],  # No shift from artists.
+        [0, 1]  # song formerly at 2 is left shifted.
+    ])
+    np.testing.assert_array_equal(result['performs'].edge_index, expected_performs)
+    np.testing.assert_array_equal(result['performing'].edge_index, expected_performing)
+    np.testing.assert_array_equal(result['composed'].edge_index, expected_composed)

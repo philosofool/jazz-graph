@@ -2,6 +2,7 @@
 from collections.abc import Hashable
 import torch
 from torch_geometric.data import HeteroData
+from torch_geometric.utils import degree
 
 
 def extend_graph(data: HeteroData, new_nodes: dict[str, dict[Hashable, torch.Tensor]], new_edge_index: dict[str, dict[Hashable, torch.Tensor]]):
@@ -51,7 +52,13 @@ def prune_graph_from_masks(src_graph: HeteroData, masks: dict):
         node_data = src_graph[node_type]
         for key, tensor in node_data.items():
             mask = masks[node_type]
-            tensor = tensor[mask]
+            if key == 'input_id':
+                # I don't love this, but input_id in a batch is length batch size...
+                tensor = tensor[mask[:tensor.size(0)]]
+            elif key == 'batch_size':
+                continue
+            else:
+                tensor = tensor[mask]
             dst_graph[node_type][key] = tensor
     # set the edge indexes in out.
     for src, relation, dst in edge_types:
@@ -65,3 +72,17 @@ def prune_graph_from_masks(src_graph: HeteroData, masks: dict):
         ])
         dst_graph[src, relation, dst].edge_index = new_edge_index
     return dst_graph
+
+
+def mask_node_degree(data: HeteroData, min_degree=1):
+    node_types, edge_types = data.metadata()
+    seen_relations = set()
+    total_degrees = {node_type: torch.zeros(data[node_type].num_nodes, dtype=torch.bool) for node_type in node_types}
+    for edge_type in edge_types:
+        src, _, dst = edge_type
+        edge = data[edge_type].edge_index
+        n_src_nodes = data[src].num_nodes
+        total_degrees[src] = total_degrees[src] + degree(edge[0], num_nodes=n_src_nodes)
+        n_dst_nodes = data[dst].num_nodes
+        total_degrees[dst] = total_degrees[dst] + degree(edge[1], num_nodes=n_dst_nodes)
+    return {k: v >= min_degree for k, v in total_degrees.items()}

@@ -6,10 +6,9 @@ import pandas as pd
 import torch
 import torch_geometric
 from torch_geometric.data import HeteroData
-from torch_geometric.utils import degree
 from torch_geometric.transforms import ToUndirected
 
-from jazz_graph.data.graph_transforms import prune_graph_from_masks
+from jazz_graph.data.graph_transforms import mask_node_degree, prune_graph_from_masks
 
 
 
@@ -136,20 +135,6 @@ def prune_isolated_nodes(data: HeteroData):
     out = prune_graph_from_masks(data, masks)
     return out
     # set the node data in out.
-
-def mask_node_degree(data: HeteroData, min_degree=1):
-    node_types, edge_types = data.metadata()
-    seen_relations = set()
-    total_degrees = {node_type: torch.zeros(data[node_type].num_nodes, dtype=torch.bool) for node_type in node_types}
-    for edge_type in edge_types:
-        src, _, dst = edge_type
-        edge = data[edge_type].edge_index
-        n_src_nodes = data[src].num_nodes
-        total_degrees[src] = total_degrees[src] + degree(edge[0], num_nodes=n_src_nodes)
-        n_dst_nodes = data[dst].num_nodes
-        total_degrees[dst] = total_degrees[dst] + degree(edge[1], num_nodes=n_dst_nodes)
-    return {k: v >= min_degree for k, v in total_degrees.items()}
-
 
 def make_jazz_data(create: CreateTensors) -> HeteroData:
     data = HeteroData()
