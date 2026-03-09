@@ -112,6 +112,35 @@ class Recommender:
         rec_recordings = self.lookup_recordings.lookup_recording_ids(recommendations.numpy())
         return rec_recordings, scores[recommendations].numpy()
 
+class InferenceRecommender(Recommender):
+    def __init__(self, model: JazzModel, data: HeteroData, lookup: LookupRecordings):
+        self.model = model
+        self.data = data
+        self.lookup_recordings = lookup
+        for node_type in data.metadata()[0]:
+            node = self.data[node_type]
+            node.n_id = torch.arange(node.x.size(0))
+
+    @torch.no_grad()
+    def get_recommendations(self, listens: list[int]):
+        self.model.eval()
+        x_dict, edge_index_dict = self.data.x_dict, self.data.edge_index_dict
+        performance_embed = self.model(x_dict, edge_index_dict, self.data)['performance']
+        embed_dim = performance_embed.shape[-1]
+        listens_mask = self.lookup_recordings.mask_listens(listens)
+
+        # print("mask info ", listens_mask.dtype, listens_mask.shape)
+        # print("norms ", torch.linalg.norm(performance_embed[:6], dim=1))
+
+        listened_perf = performance_embed[listens_mask]
+        novel_perf = performance_embed[~listens_mask]
+        scores = (novel_perf @ listened_perf.T).sum(-1)
+        # print(scores.shape, novel_perf.shape, listened_perf.shape)
+
+        rec_recordings, scores_sorted = self._sort_scores(scores)
+        return rec_recordings, scores_sorted
+
+
 
 ## Inductive Graph Recommender
 
