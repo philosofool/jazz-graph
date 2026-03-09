@@ -1,8 +1,9 @@
 import pandas as pd
 from numpy.typing import ArrayLike
+import numpy as np
 
 
-def map_array(arr: ArrayLike, mapping: dict):
+def map_array(arr: ArrayLike, mapping: dict) -> np.ndarray:
     """Map the values in a 1d-array."""
     series = pd.Series(arr)  # pyright: ignore [reportCallIssue, reportArgumentType]
     return series.map(mapping).values

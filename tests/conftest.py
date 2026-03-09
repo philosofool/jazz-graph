@@ -11,7 +11,7 @@ def hetero_data() -> HeteroData:
     data['performance'].x = torch.tensor([20, 21, 22, 24, 23])
 
     data['artist', 'performs', 'performance'].edge_index = torch.tensor([
-        [1,   1,  3,  3,  3],  # values zero and three missing.
+        [1, 1, 3, 3, 3],  # values zero and three missing.
         [0, 1, 0, 1, 2]   # 23 and 24 missing.
     ])
     data['performance', 'performing', 'song'].edge_index = torch.tensor([

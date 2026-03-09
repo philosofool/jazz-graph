@@ -70,11 +70,19 @@ class JazzModel(nn.Module):
 
 
     def forward(self, x_dict, edge_dict, batch) -> torch.Tensor:
-        x_dict = {
-            'performance': self.performance_embed(batch['performance'].n_id),
-            'artist': self.artist_embed(batch['artist'].n_id),
-            'song': self.song_embed(batch['song'].n_id)
-        }
+        if hasattr(batch['performance'], 'n_id'):
+            x_dict = {
+                'performance': self.performance_embed(batch['performance'].n_id),
+                'artist': self.artist_embed(batch['artist'].n_id),
+                'song': self.song_embed(batch['song'].n_id)
+            }
+        else:
+            x_dict = {
+                'performance': self.performance_embed(torch.arange(batch['performance'].num_nodes)),
+                'artist': self.artist_embed(torch.arange(batch['artist'].num_nodes)),
+                'song': self.song_embed(torch.arange(batch['song'].num_nodes))
+            }
+
 
         x_dict = self.gnn(x_dict, edge_dict)
         return x_dict
