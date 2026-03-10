@@ -1,5 +1,5 @@
 from jazz_graph.model.model import UnsupervisedJazzModel
-from jazz_graph.training.losses import nt_xent_loss
+from jazz_graph.training.loss import nt_xent_loss
 
 
 import torch

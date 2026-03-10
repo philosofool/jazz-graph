@@ -86,8 +86,6 @@ class TestPredictLinkRecommender:
         np.testing.assert_array_equal(recs, expected_recs)
         np.testing.assert_array_almost_equal(scores, expected_scores)
 
-
-
     def test_inductive_recommend(self, recommender):
         user_listens = [21, 22]
         new_nodes, new_edges, new_embed = recommender.get_user_parameters(user_listens)

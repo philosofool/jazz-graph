@@ -103,14 +103,14 @@ class Recommender:
     def get_recommendations(self, listens: list[int]):
         user_embedding = self.make_user_embedding(listens)
         similarity_scores = dot_product_similarity(user_embedding, self.embeddings.weight)
-        recommendations, scores = self._sort_scores(similarity_scores)
+        recommendations, scores, _ = self._sort_scores(similarity_scores)
         return recommendations, scores
 
-    def _sort_scores(self, scores) -> tuple[np.ndarray, np.ndarray]:
+    def _sort_scores(self, scores) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         scores = scores.view(-1)
         recommendations = torch.argsort(scores, descending=True)
         rec_recordings = self.lookup_recordings.lookup_recording_ids(recommendations.numpy())
-        return rec_recordings, scores[recommendations].numpy()
+        return rec_recordings, scores[recommendations].numpy(), recommendations.numpy()
 
 class InferenceRecommender(Recommender):
     def __init__(self, model: JazzModel, data: HeteroData, lookup: LookupRecordings):
@@ -126,19 +126,20 @@ class InferenceRecommender(Recommender):
         self.model.eval()
         x_dict, edge_index_dict = self.data.x_dict, self.data.edge_index_dict
         performance_embed = self.model(x_dict, edge_index_dict, self.data)['performance']
-        embed_dim = performance_embed.shape[-1]
         listens_mask = self.lookup_recordings.mask_listens(listens)
 
-        # print("mask info ", listens_mask.dtype, listens_mask.shape)
-        # print("norms ", torch.linalg.norm(performance_embed[:6], dim=1))
-
         listened_perf = performance_embed[listens_mask]
-        novel_perf = performance_embed[~listens_mask]
-        scores = (novel_perf @ listened_perf.T).sum(-1)
-        # print(scores.shape, novel_perf.shape, listened_perf.shape)
+        novel_perf = performance_embed
+        raw_scores = (novel_perf @ listened_perf.T)
+        # raw_scores = raw_scores.masked_fill(raw_scores < 0, 0)
+        scores = raw_scores.sum(dim=-1)
 
-        rec_recordings, scores_sorted = self._sort_scores(scores)
-        return rec_recordings, scores_sorted
+        # scores = torch.mm(novel_perf, listened_perf.t())
+        # print(scores[:3])
+        rec_recordings, scores_sorted, sort_index = self._sort_scores(scores)
+        print(performance_embed[sort_index][:10, :6])
+
+        return rec_recordings, scores_sorted, listens_mask
 
 
 
@@ -210,7 +211,7 @@ class PredictLinkRecommender(Recommender):
         """Return recommended recording ids and their scores."""
         new_nodes, new_edges, new_embed = self.get_user_parameters(listens, weight_by_count)
         scores, _ = self.inductive_rec(new_nodes, new_edges, new_embed)
-        rec_recordings, sorted_scores = self._sort_scores(scores)
+        rec_recordings, sorted_scores, _ = self._sort_scores(scores)
         return rec_recordings, sorted_scores
 
 
