@@ -215,8 +215,12 @@ def analyze_model_embeddings(model, graph_data):
         ('The Dave Brubeck Quartet', "Time Out"),
         ('Ornette Coleman', 'The Shape of Jazz to Come')  # very unusual music--should probably be easy.
     ]
-    recording_traits = fetch_recording_traits(use_proto=True).set_index('recording_id')
-
+    try:
+        recording_traits = fetch_recording_traits(use_proto=True).set_index('recording_id')
+    except Exception as e:
+        print(f"Fetch of recording traits failed with {type(e)}. Unable to display DB dependent metrics.")
+        # print(e)
+        return
     def zero_diag(tensor):
         return tensor * (torch.ones_like(tensor) - torch.eye(tensor.size(0)))
 
@@ -250,10 +254,15 @@ def make_analyze_embeddings(models_dir) -> Callable:
 if __name__ == '__main__':
 
     seed_everything(43)
-    models_dir = '/workspace/local_data/graph_parquet_proto'
+    models_dir = '/workspace/local_data/graph_parquet'
     assert os.path.exists(models_dir)
     create = CreateTensors(models_dir)
     data = make_jazz_data(create)
+    import torch
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+
+
 
     run_to_load: str|None = None
 
@@ -313,6 +322,7 @@ if __name__ == '__main__':
         embeddings_dim=model_config['hidden_dim'],
         projection_dim=model_config['projection_dim']
     )
+    model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=experiment_config['lr'])
 
     if run_to_load:
