@@ -44,6 +44,7 @@ from jazz_graph.model.model import JazzModel, LinkPredictionModel, NodeClassifie
 from jazz_graph.training.logging import plot_logs
 from jazz_graph.training.views import MatchAlbumAugmentation, performance_album_map
 from jazz_graph.training.loss import nt_xent_loss_with_masking
+from jazz_graph.training.loop import NeighborLoaderWithJitter
 
 # Thanks to Claude.ai for taking AlignmentLoss as template and giving this
 # evaluator of embedding variance.
@@ -335,12 +336,18 @@ if __name__ == '__main__':
     num_neighbors = data_config['sampling']['num_neighbors']
     input_node_type = data_config['input_node_type']
 
-    train_loader = NeighborLoader(
+    year_feature = data['performance'].x[:, 0]
+    train_loader = NeighborLoaderWithJitter(
         data,
+        (input_node_type, year_feature),
         num_neighbors=num_neighbors,
         batch_size=experiment_config['batch_size'],
-        input_nodes=(input_node_type, torch.arange(data[input_node_type].num_nodes)),
-        shuffle=True
+        # input_nodes=(input_node_type, torch.arange(data[input_node_type].num_nodes)),
+        # shuffle=True
     )
     trainer = make_album_match_trainer(model, optimizer, experiment_logger)
+    trainer.add_event_handler(
+        Events.EPOCH_STARTED,
+        lambda engine: train_loader.set_epoch(engine.state.epoch)
+    )
     trainer.run(train_loader, max_epochs=3)
