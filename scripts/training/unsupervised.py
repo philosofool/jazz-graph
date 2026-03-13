@@ -78,7 +78,7 @@ class UnsupervisedGNNTrainingLogicMatchAlbum:
         album_ids = batch['performance'].album_id
         matching_album_mask = album_ids.reshape(-1, 1) == album_ids.reshape(1, -1)
 
-        loss = nt_xent_loss_with_masking(z1_dict['performance'], matching_album_mask)
+        loss = nt_xent_loss_with_masking(z1_dict['performance'], matching_album_mask, self.temperature)
         loss.backward()
         self.optimizer.step()
         results = {'performance': {'loss': loss.item(), 'z1': z1_dict['performance'].detach(), 'mask': matching_album_mask}}
@@ -219,7 +219,7 @@ def analyze_model_embeddings(model, graph_data):
         recording_traits = fetch_recording_traits(use_proto=True).set_index('recording_id')
     except Exception as e:
         print(f"Fetch of recording traits failed with {type(e)}. Unable to display DB dependent metrics.")
-        # print(e)
+        print(e)
         return
     def zero_diag(tensor):
         return tensor * (torch.ones_like(tensor) - torch.eye(tensor.size(0)))
@@ -273,6 +273,7 @@ if __name__ == '__main__':
         experiment_config = experiment_logger.load_config()
         if experiment_config is None:
             raise ValueError("Only experiment loggers with configs can be used.")
+        print(f"Initializing existing model from checkpoint at {run_to_load}. (See config file for details.)")
     else:
         experiment_config = {
             'data_config': {
@@ -291,7 +292,7 @@ if __name__ == '__main__':
                 'hidden_dim': 128,
                 'embed_dim': 64,
                 'projection_dim': 64,
-                'dropout': 0.0005,
+                'dropout': 0.0,
                 'model_type': 'sage',
                 'num_layers': 3,
             },
@@ -299,8 +300,9 @@ if __name__ == '__main__':
             'dataset': models_dir,
             'lr': .001,
             'batch_size': 256,
-            'temperature': .25
+            'temperature': .3
         }
+        print(f"Initializing new model with configuration:\n{experiment_config}")
         experiment_logger = ExperimentLogger(root='/workspace/experiments', run_name=f'gnn_simCLR_{os.path.basename(models_dir)}', config=experiment_config)
 
     model_config = experiment_config['model']
@@ -341,4 +343,4 @@ if __name__ == '__main__':
         shuffle=True
     )
     trainer = make_album_match_trainer(model, optimizer, experiment_logger)
-    trainer.run(train_loader, max_epochs=20)
+    trainer.run(train_loader, max_epochs=3)
