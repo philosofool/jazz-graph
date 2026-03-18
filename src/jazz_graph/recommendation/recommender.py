@@ -100,19 +100,27 @@ class Recommender:
         user_embedding = aggregate_user_embeddings(relevant_embeddings)
         return user_embedding
 
-    def get_recommendations(self, listens: list[int]):
+    def get_recommendations(self, listens: list[int]) -> tuple:
         user_embedding = self.make_user_embedding(listens)
         similarity_scores = dot_product_similarity(user_embedding, self.embeddings.weight)
-        recommendations, scores = self._sort_scores(similarity_scores)
+        recommendations, scores, _ = self._sort_scores(similarity_scores)
         return recommendations, scores
 
-    def _sort_scores(self, scores) -> tuple[np.ndarray, np.ndarray]:
+    def _sort_scores(self, scores) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         scores = scores.view(-1)
         recommendations = torch.argsort(scores, descending=True)
         rec_recordings = self.lookup_recordings.lookup_recording_ids(recommendations.numpy())
-        return rec_recordings, scores[recommendations].numpy()
+        return rec_recordings, scores[recommendations].numpy(), recommendations.numpy()
 
 class InferenceRecommender(Recommender):
+    """Get recommendations from a JazzModel.
+
+    The JazzModel should return embeddings where the dot product of two embeddings
+    represents the similarity of the correspondings songs.
+
+    This is used for testing and prototyping, where we want to use an in-memory
+    model, rather than cached embeddings, to make an inference.
+    """
     def __init__(self, model: JazzModel, data: HeteroData, lookup: LookupRecordings):
         self.model = model
         self.data = data
@@ -122,23 +130,28 @@ class InferenceRecommender(Recommender):
             node.n_id = torch.arange(node.x.size(0))
 
     @torch.no_grad()
-    def get_recommendations(self, listens: list[int]):
+    def get_recommendations(self, listens: list[int]) -> tuple:
+        """Get recommendations based on input ids.
+
+        Returns
+        -------
+        A tuple of numpy arrays, recording_id, score and a boolean mask.
+        The response recording_ids are included. The mask is True where an
+        entry was included in the inputs.
+        """
         self.model.eval()
         x_dict, edge_index_dict = self.data.x_dict, self.data.edge_index_dict
         performance_embed = self.model(x_dict, edge_index_dict, self.data)['performance']
-        embed_dim = performance_embed.shape[-1]
         listens_mask = self.lookup_recordings.mask_listens(listens)
 
-        # print("mask info ", listens_mask.dtype, listens_mask.shape)
-        # print("norms ", torch.linalg.norm(performance_embed[:6], dim=1))
-
         listened_perf = performance_embed[listens_mask]
-        novel_perf = performance_embed[~listens_mask]
-        scores = (novel_perf @ listened_perf.T).sum(-1)
-        # print(scores.shape, novel_perf.shape, listened_perf.shape)
+        novel_perf = performance_embed
+        raw_scores = (novel_perf @ listened_perf.T)
+        scores = raw_scores.sum(dim=-1)
 
-        rec_recordings, scores_sorted = self._sort_scores(scores)
-        return rec_recordings, scores_sorted
+        rec_recordings, scores_sorted, sort_index = self._sort_scores(scores)
+
+        return rec_recordings, scores_sorted, listens_mask[sort_index]
 
 
 
@@ -210,7 +223,7 @@ class PredictLinkRecommender(Recommender):
         """Return recommended recording ids and their scores."""
         new_nodes, new_edges, new_embed = self.get_user_parameters(listens, weight_by_count)
         scores, _ = self.inductive_rec(new_nodes, new_edges, new_embed)
-        rec_recordings, sorted_scores = self._sort_scores(scores)
+        rec_recordings, sorted_scores, _ = self._sort_scores(scores)
         return rec_recordings, sorted_scores
 
 
