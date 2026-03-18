@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 import subprocess
+import shutil
 
 from typing import TYPE_CHECKING
 
@@ -343,3 +344,64 @@ def load_most_recent_checkpoint(model, root="experiments", run_name_pattern=None
         print(f"  Metrics: {checkpoint['metrics']}")
 
     return checkpoint
+
+
+def clean_up_experiments(root="experiments", run_name_pattern=None, dry_run=True):
+    """Traverse root experiments directory, inspecting or deleting ones that are invalid.
+
+    See Also:
+        is_valid_experiment
+    """
+    root_path = Path(root)
+    if not root_path.exists():
+        print(f"Directory {root} does not exist.")
+        return None
+
+    run_dirs = [d for d in root_path.iterdir() if d.is_dir()]
+    if run_name_pattern is not None:
+        run_dirs = [d for d in run_dirs if run_name_pattern in d.name]
+
+    if not run_dirs:
+        print(f"No runs found in {root}" + (f" matching '{run_name_pattern}'" if run_name_pattern else ""))
+        return None
+
+    n_scheduled = 0
+    n_valid = 0
+    if dry_run:
+        print("Experiments scheduled for deletion:")
+
+    for path in run_dirs:
+        is_valid = is_valid_experiment(path)
+        if not is_valid:
+            n_scheduled += 1
+            if dry_run:
+                print(path.name)
+            else:
+                shutil.rmtree(path)
+        else:
+            n_valid += 1
+    if dry_run:
+        print(f"Found {n_valid} experiments with useful data. Found {n_scheduled} to be deleted.")
+    else:
+        print(f"Found Found {n_valid} experiments with useful data. Deleted {n_scheduled} invalid runs.")
+
+
+def is_valid_experiment(path: Path):
+    metrics_exist = False
+    checkpoint_exists = False
+    config_exists = False
+    is_good = True
+    for file in path.iterdir():
+        if file.name == 'config.json':
+            config_exists = True
+        if file.name == 'metrics.jsonl':
+            metrics_exist = True
+            num_epochs = 0
+            with open(file) as f:
+                for line in f:
+                    num_epochs += 1
+            if num_epochs < 2:
+                is_good = False
+        if file.name == 'checkpoints':
+            checkpoint_exists = True
+    return (metrics_exist and config_exists and is_good)
