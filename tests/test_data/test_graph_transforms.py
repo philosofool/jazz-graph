@@ -92,9 +92,9 @@ def test_prune_graph_from_masks(hetero_data):
     # NOTE: this is currently the same as test_graph_builder.test_prune_isolated_nodes
     # except that we contruct the mask directly.
     mask = {
-        'artist': torch.tensor([1, 1, 0, 1]),
-        'performance': torch.tensor([1, 1, 1, 0, 1]),
-        'song': torch.tensor([1, 0, 1])
+        'artist': torch.tensor([1, 1, 0, 1], dtype=torch.bool),
+        'performance': torch.tensor([1, 1, 1, 0, 1], dtype=torch.bool),
+        'song': torch.tensor([1, 0, 1], dtype=torch.bool)
     }
     result = prune_graph_from_masks(hetero_data, mask)
     assert torch.all(result['artist'].x == torch.tensor([3, 1, 2]))

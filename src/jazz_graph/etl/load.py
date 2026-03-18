@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 
 class LoadData:
-    """Load data based, using the table schema.
+    """Load data to database, using the table schema.
 
     The table schema determines the correct sql statement
     for the table loading, table creation (if requested),

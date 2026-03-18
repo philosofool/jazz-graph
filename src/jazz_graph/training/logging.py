@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 import subprocess
+import shutil
 
 from typing import TYPE_CHECKING
 
@@ -80,7 +81,8 @@ class ExperimentLogger:
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict()
         }
-        torch.save(model.state_dict(), path)
+        torch.save(checkpoint, path)
+        print(f"Saved checkpoint to {path}")
 
     def save_embeddings(self, model: NodeClassifier | LinkPredictionModel):
         base_model: JazzModel = model.base_model
@@ -251,3 +253,155 @@ def load_model(model_path):
     model_path = Path(model_path)
     model = torch.load(model_path / "checkpoints" / "last.pt")
     return model
+
+
+# Credit: Claude.ai
+def find_most_recent_run(root="experiments", run_name_pattern=None, return_all=False):
+    """
+    Find the most recent experiment run directory.
+
+    Args:
+        root: Root experiments directory
+        run_name_pattern: Optional string to filter run names
+        return_all: If True, return list of all runs sorted by timestamp (newest first)
+
+    Returns:
+        Path to most recent run, or list of Paths if return_all=True
+    """
+    root_path = Path(root)
+
+    if not root_path.exists():
+        print(f"Directory {root} does not exist")
+        return [] if return_all else None
+
+    # Get all subdirectories
+    run_dirs = [d for d in root_path.iterdir() if d.is_dir()]
+
+    # Filter by pattern
+    if run_name_pattern:
+        run_dirs = [d for d in run_dirs if run_name_pattern in d.name]
+
+    if not run_dirs:
+        print(f"No runs found in {root}" + (f" matching '{run_name_pattern}'" if run_name_pattern else ""))
+        return [] if return_all else None
+
+    # Parse and sort by timestamp
+    runs_with_timestamps = []
+    for dir_path in run_dirs:
+        try:
+            # Extract YYYY-MM-DD_HH-MM-SS from start of dirname
+            parts = dir_path.name.split('_')
+            if len(parts) >= 2:
+                timestamp_str = f"{parts[0]}_{parts[1]}"
+                timestamp = datetime.strptime(timestamp_str, "%Y-%m-%d_%H-%M-%S")
+                runs_with_timestamps.append((timestamp, dir_path))
+        except ValueError:
+            # Skip directories that don't match the timestamp format
+            continue
+
+    if not runs_with_timestamps:
+        print(f"No valid timestamped runs found")
+        return [] if return_all else None
+
+    # Sort by timestamp (newest first)
+    runs_with_timestamps.sort(reverse=True, key=lambda x: x[0])
+
+    if return_all:
+        return [path for _, path in runs_with_timestamps]
+    else:
+        return runs_with_timestamps[0][1]
+
+
+# Helper to load checkpoint from most recent run
+def load_most_recent_checkpoint(model, root="experiments", run_name_pattern=None,
+                                checkpoint_name="last.pt"):
+    """Load checkpoint from most recent run."""
+    recent_run = find_most_recent_run(root, run_name_pattern)
+
+    if not recent_run:
+        print("No recent run found")
+        return None
+
+    checkpoint_path = recent_run / "checkpoints" / checkpoint_name
+
+    if not checkpoint_path.exists():
+        print(f"Checkpoint not found at {checkpoint_path}")
+        # Try artifacts directory
+        checkpoint_path = recent_run / "artifacts" / checkpoint_name
+
+    if not checkpoint_path.exists():
+        print(f"No checkpoint found in {recent_run}")
+        return None
+
+    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    model.load_state_dict(checkpoint['model_state_dict'])
+
+    print(f"✓ Loaded checkpoint from {checkpoint_path}")
+    print(f"  Run: {recent_run.name}")
+    if 'epoch' in checkpoint:
+        print(f"  Epoch: {checkpoint['epoch']}")
+    if 'metrics' in checkpoint:
+        print(f"  Metrics: {checkpoint['metrics']}")
+
+    return checkpoint
+
+
+def clean_up_experiments(root="experiments", run_name_pattern=None, dry_run=True):
+    """Traverse root experiments directory, inspecting or deleting ones that are invalid.
+
+    See Also:
+        is_valid_experiment
+    """
+    root_path = Path(root)
+    if not root_path.exists():
+        print(f"Directory {root} does not exist.")
+        return None
+
+    run_dirs = [d for d in root_path.iterdir() if d.is_dir()]
+    if run_name_pattern is not None:
+        run_dirs = [d for d in run_dirs if run_name_pattern in d.name]
+
+    if not run_dirs:
+        print(f"No runs found in {root}" + (f" matching '{run_name_pattern}'" if run_name_pattern else ""))
+        return None
+
+    n_scheduled = 0
+    n_valid = 0
+    if dry_run:
+        print("Experiments scheduled for deletion:")
+
+    for path in run_dirs:
+        is_valid = is_valid_experiment(path)
+        if not is_valid:
+            n_scheduled += 1
+            if dry_run:
+                print(path.name)
+            else:
+                shutil.rmtree(path)
+        else:
+            n_valid += 1
+    if dry_run:
+        print(f"Found {n_valid} experiments with useful data. Found {n_scheduled} to be deleted.")
+    else:
+        print(f"Found Found {n_valid} experiments with useful data. Deleted {n_scheduled} invalid runs.")
+
+
+def is_valid_experiment(path: Path):
+    metrics_exist = False
+    checkpoint_exists = False
+    config_exists = False
+    is_good = True
+    for file in path.iterdir():
+        if file.name == 'config.json':
+            config_exists = True
+        if file.name == 'metrics.jsonl':
+            metrics_exist = True
+            num_epochs = 0
+            with open(file) as f:
+                for line in f:
+                    num_epochs += 1
+            if num_epochs < 2:
+                is_good = False
+        if file.name == 'checkpoints':
+            checkpoint_exists = True
+    return (metrics_exist and config_exists and is_good)

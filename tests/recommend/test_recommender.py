@@ -78,13 +78,16 @@ class TestPredictLinkRecommender:
 
     def test__sort_scores(self, recommender):
         scores = torch.tensor([[.1, -1., -.4, -.33, .72]]).t()
-        recs, scores = recommender._sort_scores(scores)
+        recs, scores, mask = recommender._sort_scores(scores)
         # expected = [20, 21, 22, 24, 23]
         # expected = [1, 2, 4, 3, 0]
         expected_recs = [23, 20, 24, 22, 21]
         expected_scores = [.72, .1, -.33, -.4, -1.]
+        expected_mask = [4, 0, 3, 2, 1]
         np.testing.assert_array_equal(recs, expected_recs)
         np.testing.assert_array_almost_equal(scores, expected_scores)
+        np.testing.assert_array_equal(mask, expected_mask)
+        assert mask.dtype == np.int64
 
 
 
