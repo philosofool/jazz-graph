@@ -39,7 +39,11 @@ class TestCreateTensors:
 
     songs = pd.DataFrame({'title': [1, 3, 2]})
     artists = pd.DataFrame({'name': [100, 40, 50]})
-    performances = pd.DataFrame({'recording_id': [100, 101, 102], 'release_date': pd.to_datetime(['2000', '1956', '1976']), 'free_jazz': [0, 0, 1], 'bop': [1, 0, 1], 'vocal': [0, 1, 1]})
+    performances = pd.DataFrame(
+        {'recording_id': [100, 101, 102],
+         'release_date': pd.to_datetime(['2000', '1956', '1976']),
+         'release_group_id': [200, 200, 2001],
+         'free_jazz': [0, 0, 1], 'bop': [1, 0, 1], 'vocal': [0, 1, 1]})
     performance = performances.astype({'release_date': 'object'})  # assure that if source data is object type, casting will work.
 
     song_artist_edges = pd.DataFrame({'work_id': [0, 1, 2], 'artist_id': [1, 2, 2]})
