@@ -80,7 +80,7 @@ class ExperimentLogger:
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict()
         }
-        torch.save(model.state_dict(), path)
+        torch.save(checkpoint, path)
         print(f"Saved checkpoint to {path}")
 
     def save_embeddings(self, model: NodeClassifier | LinkPredictionModel):
