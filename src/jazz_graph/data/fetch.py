@@ -4,7 +4,7 @@ import pandas as pd
 import psycopg
 
 def fetch_recording_traits(
-        start: pd.Timestamp | None =None, end: pd.Timestamp | None =None, use_proto: bool = False) -> pd.DataFrame:
+        start: pd.Timestamp | None =None, end: pd.Timestamp | None = None, use_proto: bool = False) -> pd.DataFrame:
     """Helper function to retrive known jazz recordings in MusicBrainz.
 
     start:
