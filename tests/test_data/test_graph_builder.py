@@ -103,7 +103,9 @@ class TestCreateTensors:
         create = CreateTensors(self.path)
         create.performances()
         # hacky dependence on implementation but we don't need that much rigor here.
-        create._performances = pd.DataFrame(np.arange(0, 40_000).reshape(-1, 4))
+        create._performances = pd.DataFrame(
+            np.arange(0, 30_000).reshape(-1, 3),
+            columns=['release_date', 'recording_id', 'release_group_id'])
         train, dev, test = create._mask_slices()
         assert not np.any(train & dev & test), "The slices should be disjoint."
         assert np.all(train | dev | test), "The slices should be exhaustive."
