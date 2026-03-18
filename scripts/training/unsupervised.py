@@ -17,14 +17,15 @@ from ignite.metrics import RunningAverage
 
 import torch
 from torch import layer_norm, seed
-import torch.nn.functional as F
-import torch_geometric
 from torch_geometric.data import HeteroData
 from torch_geometric.loader import NeighborLoader
 from torch_geometric.nn import GraphConv, SAGEConv, to_hetero, HeteroConv
 from torch_geometric import transforms as T
 from torch_geometric import seed_everything
 
+from jazz_graph.data.fetch import fetch_recording_traits
+from jazz_graph.data.reporting import inspect_degrees
+from jazz_graph.etl.transforms import map_array, map_by_index
 from jazz_graph.metrics.embedding_metrics import UniformityLoss, MultiPositiveAlignment, EmbeddingStd
 from jazz_graph.model.model import UnsupervisedJazzModel
 from jazz_graph.training.inspect import analyze_model_embeddings
@@ -44,11 +45,11 @@ from jazz_graph.model.model import JazzModel, LinkPredictionModel, NodeClassifie
 from jazz_graph.training.logging import plot_logs
 from jazz_graph.training.views import MatchAlbumAugmentation, performance_album_map
 from jazz_graph.training.loss import nt_xent_loss_with_masking
-from jazz_graph.training.inspect import analyze_batch_positives, analyze_negative_difficulty
+from jazz_graph.training.loop import NeighborLoaderWithJitter, UnsupervisedGNNTrainingLogic
 
 
 class UnsupervisedGNNTrainingLogicMatchAlbum:
-    """Define training step and eval steps."""
+    """Define training step and eval steps in a SimCLR style learning over albums."""
     def __init__(self, model: UnsupervisedJazzModel, optimizer, temperature):
         self.device = next(model.parameters()).device
         self.model = model
@@ -76,9 +77,6 @@ class UnsupervisedGNNTrainingLogicMatchAlbum:
         z1_dict: dict[str, torch.Tensor] = self.model.project(h1_dict)
         album_ids = batch['performance'].album_id
         matching_album_mask = album_ids.reshape(-1, 1) == album_ids.reshape(1, -1)
-        if engine.state.epoch == 1:
-            analyze_batch_positives(z1_dict['performance'], matching_album_mask)
-            analyze_negative_difficulty(z1_dict['performance'], matching_album_mask, self.temperature)
 
         loss = nt_xent_loss_with_masking(z1_dict['performance'], matching_album_mask, self.temperature)
         loss.backward()
@@ -86,8 +84,8 @@ class UnsupervisedGNNTrainingLogicMatchAlbum:
         results = {'performance': {'loss': loss.item(), 'z1': z1_dict['performance'].detach(), 'mask': matching_album_mask}}
         return results
 
-
 def console_logging(evaluator: Engine, step_name: str, trainer: Engine):
+    """Console logging for unsupervised experiments."""
     metrics = evaluator.state.metrics
     print(f"{step_name} - Epoch[{trainer.state.epoch:03}]")
     def order_keys(key):
@@ -107,6 +105,7 @@ def console_logging(evaluator: Engine, step_name: str, trainer: Engine):
     print()
 
 def make_album_match_trainer(model, optimizer, experiment_logger: ExperimentLogger):
+    """Make a trainer that matches on semantic similarity by album."""
     node_types = ['performance']
     experiment_config = experiment_logger.load_config()
     if experiment_config is None:
@@ -152,6 +151,63 @@ def make_album_match_trainer(model, optimizer, experiment_logger: ExperimentLogg
     trainer.add_event_handler(Events.COMPLETED, save_checkpoint_handler, experiment_logger, model, optimizer)
     return trainer
 
+def make_trainer(model, optimizer, experiment_logger: ExperimentLogger):
+    """Build a trainer suitable for self-supervized learning with pairs as similarities.
+
+    For example, use with a drop_edge augmentation.
+    """
+    node_types = ['performance', 'artist', 'song']
+    experiment_config = experiment_logger.load_config()
+    if experiment_config is None:
+        raise ValueError("Logger must have an experiment config.")
+    if experiment_config.get('drop_edge_prob', None) is None:
+        raise ValueError("Expected drop edge probability in config.")
+    models_dir = experiment_config['data_config']['dataset']
+
+    trainer_logic = UnsupervisedGNNTrainingLogic(
+        model,
+        optimizer,
+        experiment_config['temperature'],
+        augment=lambda data: drop_random_nodes_and_edges(data, experiment_config['drop_edge_prob'])
+        # make_match_album_augmentation(models_dir)
+    )
+
+    trainer = Engine(trainer_logic.train_step)
+
+    def create_metrics_for_node_type(node_type):
+        """Create metrics for a specific node type."""
+        return {
+            f"{node_type}_loss": RunningAverage(
+                output_transform=lambda out: out[node_type]['loss']
+            ),
+            f"{node_type}_alignment": MultiPositiveAlignment(
+                output_transform=lambda out: (out[node_type]['h1'], out[node_type]['h2'])
+            ),
+            f"{node_type}_uniformity": UniformityLoss(
+                output_transform=lambda out: (out[node_type]['h1'], out[node_type]['h2'])
+            ),
+            f"{node_type}_embedding_std": EmbeddingStd(
+                output_transform=lambda out: (out[node_type]['h1'], out[node_type]['h2'])
+            ),
+        }
+
+    metrics = {}
+    for node_type in node_types:
+        metrics.update(create_metrics_for_node_type(node_type))
+
+    for name, metric in metrics.items():
+        metric.attach(trainer, name)
+
+    progress_bar = ProgressBar()
+    progress_bar.attach(trainer, metric_names=[f'{node_type}_loss' for node_type in node_types])
+
+    trainer.add_event_handler(Events.EPOCH_COMPLETED, console_logging, 'Training', trainer)
+    trainer.add_event_handler(Events.EPOCH_COMPLETED, log_experiment_handler, experiment_logger, 'train', trainer)
+    trainer.add_event_handler(Events.EPOCH_COMPLETED(every=5), make_analyze_embeddings(models_dir), model)
+    # trainer.add_event_handler(Events.COMPLETED, save_embeddings_handler, experiment_logger, model)
+    trainer.add_event_handler(Events.COMPLETED, save_checkpoint_handler, experiment_logger, model, optimizer)
+    return trainer
+
 def train_indecies(mask):
     """Helper to take a mask array and return the relevant nodes."""
     # I think there's a torch_geometric helper for this.
@@ -161,7 +217,6 @@ def train_indecies(mask):
 
 def make_analyze_embeddings(models_dir) -> Callable:
 
-    # models_dir = '/workspace/local_data/graph_parquet_proto'
     assert os.path.exists(models_dir)
     create = CreateTensors(models_dir)
     data = make_jazz_data(create)
@@ -178,6 +233,9 @@ if __name__ == '__main__':
     assert os.path.exists(models_dir)
     create = CreateTensors(models_dir)
     data = make_jazz_data(create)
+    import torch
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
 
     run_to_load: str|None = None
 
@@ -188,6 +246,7 @@ if __name__ == '__main__':
         experiment_config = experiment_logger.load_config()
         if experiment_config is None:
             raise ValueError("Only experiment loggers with configs can be used.")
+        print(f"Initializing existing model from checkpoint at {run_to_load}. (See config file for details.)")
     else:
         experiment_config = {
             'random_seed': random_seed,
@@ -197,8 +256,8 @@ if __name__ == '__main__':
                 # for high degree nodes doesn't become too noisy. Artist and song nodes can
                 # be very high degree. Basially, get a sizable neighborhood for each node to
                 # reduce this noise.
-                'sampling': {'num_neighbors': [20, 15, 8, 4, 4]},
-                'input_node_type': 'artist'
+                'sampling': {'num_neighbors': [20, 15, 8]},
+                'input_node_type': 'performance'
             },
             'model': {
                 'num_performances': data['performance'].num_nodes,
@@ -207,16 +266,17 @@ if __name__ == '__main__':
                 'hidden_dim': 128,
                 'embed_dim': 64,
                 'projection_dim': 64,
-                'dropout': 0.0005,
+                'dropout': 0.0,
                 'model_type': 'sage',
                 'num_layers': 3,
             },
             'drop_edge_prob': None,
             'dataset': models_dir,
             'lr': .001,
-            'batch_size': 128,
-            'temperature': .25
+            'batch_size': 256,
+            'temperature': .3
         }
+        print(f"Initializing new model with configuration:\n{experiment_config}")
         experiment_logger = ExperimentLogger(root='/workspace/experiments', run_name=f'gnn_simCLR_{os.path.basename(models_dir)}', config=experiment_config)
 
     model_config = experiment_config['model']
@@ -238,6 +298,7 @@ if __name__ == '__main__':
         embeddings_dim=model_config['hidden_dim'],
         projection_dim=model_config['projection_dim']
     )
+    model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=experiment_config['lr'])
 
     if run_to_load:
@@ -248,19 +309,18 @@ if __name__ == '__main__':
     num_neighbors = data_config['sampling']['num_neighbors']
     input_node_type = data_config['input_node_type']
 
-    train_loader = NeighborLoader(
+    year_feature = data['performance'].x[:, 0]
+    train_loader = NeighborLoaderWithJitter(
         data,
+        (input_node_type, year_feature),
         num_neighbors=num_neighbors,
         batch_size=experiment_config['batch_size'],
-        input_nodes=(input_node_type, torch.arange(data[input_node_type].num_nodes)),
-        shuffle=True
+        # input_nodes=(input_node_type, torch.arange(data[input_node_type].num_nodes)),
+        # shuffle=True
     )
-    # dev_loader = NeighborLoader(
-    #     data,
-    #     sampling,
-    #     batch_size=128,
-    #     input_nodes=('performance', train_indicies(data['performance'].dev_mask)),
-    #     shuffle=True
-    # )
-    trainer = make_trainer(model, optimizer, experiment_logger)
-    trainer.run(train_loader, max_epochs=35)
+    trainer = make_album_match_trainer(model, optimizer, experiment_logger)
+    trainer.add_event_handler(
+        Events.EPOCH_STARTED,
+        lambda engine: train_loader.set_epoch(engine.state.epoch)
+    )
+    trainer.run(train_loader, max_epochs=1, epoch_length=4)
