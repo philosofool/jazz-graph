@@ -14,6 +14,7 @@ from jazz_graph.etl.load import LoadData
 from jazz_graph.data.schema.sql import Column, ForeignKey, PrimaryKey, TableSchema
 from jazz_graph.clean.string_date import date_precision, clean_string_date
 from jazz_graph.clean.data_normalization import normalize_title
+from jazz_graph.training.logging import is_working_tree_dirty, get_git_commit  # move this to a util!?!
 
 
 class ProcessRows:
@@ -172,11 +173,28 @@ def test_deduplicate():
     assert 'Bar' in dedup.artist.values, "This data should not be one of the dropped rows."
     assert not any(('_norm' in col for col in dedup.columns)), "Should drop normalized columns."
 
+def current_migration_name() -> str:
+    return 'create_discogs_tables_' + get_git_commit()[:10]    # pyright: ignore
+
+
+def is_current_commit_migrated() -> bool:
+    with psycopg.connect("dbname=musicbrainz_db user=philosofool") as conn:
+        cursor = conn.cursor()
+        applied = {
+            row[0]
+            for row in cursor.execute("SELECT version FROM schema_migrations")
+        }
+    return current_migration_name() in applied
 
 
 if __name__ == '__main__':
+    if is_working_tree_dirty():
+        raise Exception("It is illegal to run this in a dirty state. Stash or commit all changes and re-run.")
+    if is_current_commit_migrated():
+        raise Exception("This commit has already been migrated to the db. Did you mean to make changes?")
     test_deduplicate()
-    jazz_data_path = '/workspace/local_data/jazz_data_discogs.csv'
+
+    jazz_data_path = f'/workspace/local_data/{current_migration_name()}.csv'
     try:
         jazz_data = pd.read_csv(jazz_data_path)
         print("Loaded cached csv of jazz data.")
@@ -211,9 +229,16 @@ if __name__ == '__main__':
         conn.autocommit = False
         cursor = conn.cursor()
 
-        discogs_jazz_loader.create_table(cursor)
+        cursor.execute("DROP VIEW IF EXISTS jazz_recordings;")
+        recording_to_discog_loader.drop_table(cursor)
+
+        discogs_jazz_loader.create_table(cursor, drop_if_exists=True)
         discogs_jazz_loader.load_data(discogs_jazz, cursor)
 
         recording_to_discog_loader.create_table(cursor)
         recording_to_discog_loader.load_data(recording_to_discogs_data, cursor)
+        cursor.execute(
+            "INSERT INTO schema_migrations (version) VALUES (%s)",
+            (current_migration_name(),)
+        )
         conn.commit()

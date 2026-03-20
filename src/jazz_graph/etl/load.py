@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 
 class LoadData:
-    """Load data based, using the table schema.
+    """Load data to database, using the table schema.
 
     The table schema determines the correct sql statement
     for the table loading, table creation (if requested),
@@ -28,6 +28,9 @@ class LoadData:
             cursor.execute(self.schema.drop_table_sql())
         sql = self.schema.create_table_sql()
         cursor.execute(sql)
+
+    def drop_table(self, cursor, if_exists: bool = True):
+        cursor.execute(self.schema.drop_table_sql(if_exists=if_exists))
 
     def pandas_to_stream(self, df: pd.DataFrame):
         csv_buff = io.StringIO()

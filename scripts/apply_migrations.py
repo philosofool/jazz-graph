@@ -2,6 +2,7 @@ import re
 import os
 
 import psycopg
+from jazz_graph.training.logging import is_working_tree_dirty
 
 def apply_migrations(conn, path="/workspace/queries"):
     """Read files in path, applying them as updates to the DB.
@@ -41,6 +42,8 @@ def apply_migrations(conn, path="/workspace/queries"):
             )
 
 if __name__ == '__main__':
+    if is_working_tree_dirty():
+        raise Exception("It is illegal to run this with a dirty index. Stash all changes (including untracked) and re-run.")
     with psycopg.connect("dbname=musicbrainz_db user=philosofool") as connection:
         connection.autocommit = False
         apply_migrations(connection)

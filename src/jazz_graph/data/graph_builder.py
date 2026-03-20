@@ -6,7 +6,10 @@ import pandas as pd
 import torch
 import torch_geometric
 from torch_geometric.data import HeteroData
-from torch_geometric.utils import degree
+from torch_geometric.transforms import ToUndirected
+
+from jazz_graph.data.graph_transforms import mask_node_degree, prune_graph_from_masks
+
 
 
 class CreateTensors:
@@ -32,12 +35,18 @@ class CreateTensors:
             self._songs = self.load_parquet('song_nodes.parquet')
         return torch_values(self._songs)
 
+    def album_ids(self) -> torch.Tensor:
+        if self._performances is None:
+            self.performances()
+        assert self._performances is not None, "performances method is expected to create the _performances data."
+        return torch.tensor(self._performances.release_group_id.values)
+
     def labels(self) -> torch.Tensor:
         if getattr(self, '_labels', None) is None:
             self._labels = self.load_parquet('performance_nodes.parquet')
             # NOTE: This is pretty fragile and not currently under a robust test.
             # We should prbably get the expceted label schema under control somewhere.
-            cols = [column for column in self._labels if column not in  {'release_date', 'recording_id'}]
+            cols = [column for column in self._labels if column not in  {'release_date', 'recording_id', 'release_group_id'}]
             self._labels = self._labels[cols].copy()
         return torch_values(self._labels)
 
@@ -50,16 +59,18 @@ class CreateTensors:
         # NOTE: this is not probably best for the final version.
         # I'm simiplifying for the prototype.
         # we should probably mask whole albums. The large majority
-        # of performances on an album have identical personal and
+        # of performances on an album have identical personel and
         # differ only in song BUT style info is also usually
         # done at the album level. The task of style classification
         # or edge prediction is probably too easy if that's all it
         # takes--you would rarely need more than the immediate
         # neighborhood of a node to do the prediction. So:
         # FIXME: these masks should be done at the album grouping level.
+        # NOTE: Not sure about the above note. The task seems difficult
+        # enough that masking whole albums may be unnecessary.
         size = self.performances().size(0)
-        if size > 15_000:
-            raise NotImplementedError("This data is not production ready and should only be used with prototyping date right now.")
+        # if size > 15_000:
+        #     raise NotImplementedError("This data is not production ready and should only be used with prototyping date right now.")
         rng = np.random.default_rng(seed)
         train_idx = rng.random(size) < .8
         test_idx = ~train_idx & (rng.random(size) < .5)
@@ -80,8 +91,8 @@ class CreateTensors:
         if self._performances is None:
             self._performances = self.load_parquet('performance_nodes.parquet')
             self._performances['release_date'] = self._performances.release_date.astype('datetime64[ms]').dt.year
-            self._performances = self._performances[['release_date']].copy()
-        return torch_values(self._performances)
+            self._performances = self._performances[['release_date', 'recording_id', 'release_group_id']].copy()
+        return torch_values(self._performances[['release_date', 'recording_id',]])
 
     def artist_song_edges(self) -> torch.Tensor:
         if getattr(self, '_song_artist_edges', None) is None:
@@ -118,32 +129,59 @@ def torch_index(df: pd.DataFrame) -> torch.Tensor:
         data = data.reshape(-1, 1)
     return torch.tensor(data)
 
-def prune_island_nodes(data: HeteroData):
+def prune_isolated_nodes(data: HeteroData):
     """Remove all nodes with degree 0."""
-    node_types, edge_types = data.metadata()
     masks = mask_node_degree(data, min_degree=1)
-    out = HeteroData()
-    for node_type in node_types:
-        node_data = data[node_type]
-        for key, value in node_data.items():
-            mask = masks[node_type]
-            value = value[mask]
-            out[node_type][key] = value
-    for edge_type in edge_types:
-        edge = data[edge_type]
-        for k, v in edge.items():
-            out[edge_type][k] = v
+    out = prune_graph_from_masks(data, masks)
     return out
+    # set the node data in out.
 
-def mask_node_degree(data: HeteroData, min_degree=1):
-    node_types, edge_types = data.metadata()
-    seen_relations = set()
-    total_degrees = {node_type: torch.zeros(data[node_type].num_nodes, dtype=torch.bool) for node_type in node_types}
-    for edge_type in edge_types:
-        src, _, dst = edge_type
-        edge = data[edge_type].edge_index
-        n_src_nodes = data[src].num_nodes
-        total_degrees[src] = total_degrees[src] + degree(edge[0], num_nodes=n_src_nodes)
-        n_dst_nodes = data[dst].num_nodes
-        total_degrees[dst] = total_degrees[dst] + degree(edge[1], num_nodes=n_dst_nodes)
-    return {k: v >= min_degree for k, v in total_degrees.items()}
+def make_jazz_data(create: CreateTensors) -> HeteroData:
+    data = HeteroData()
+
+    def index_tensor(tensor):
+        """Return 0, 1, 2... for each value in tensor. (An index.)
+
+        When sampling graph nodes, we want a direct lookup of the node
+        ids.
+        """
+        return torch.arange(0, tensor.size(0), dtype=torch.int64).reshape(-1, 1)
+
+    # This is a little clunky. The nodes are not expected to provide
+    # substantial feature information--the information is the graph.
+    data['performance'].x = create.performances()
+    data['song'].x = create.songs()
+    data['artist'].x = create.artists()
+
+    data['artist', 'composed', 'song'].edge_index = create.artist_song_edges()
+    data['artist', 'performs', 'performance'].edge_index = create.artist_performance_edges()
+    data['performance', 'performing', 'song'].edge_index = create.performance_song_edges()
+
+    data['performance'].y = create.labels()
+    data['performance'].album_id = create.album_ids()
+    data['performance'].train_mask = create.train_mask()
+    data['performance'].dev_mask = create.dev_mask()
+    data['performance'].test_mask = create.test_mask()
+
+    # TODO: maybe? add instrument attributes on edges.
+    # data['artist', 'performs', 'performance'].edge_attr = <instrument>
+    data = prune_isolated_nodes(data)
+    data = ToUndirected()(data)
+    data.validate()
+    return data
+
+def make_inter_node_edges(data: pd.DataFrame, link_on: str) -> np.ndarray:
+    links = {}
+    row_idx = 0
+    out = []
+    for idx, row in data.iterrows():
+        link_value = row[link_on]
+        known_links = links.get(link_value)
+        if known_links is None:
+            links[link_value] = [row_idx]
+        else:
+            for known_link in known_links:
+                out.append([known_link, row_idx])
+            links[link_value].append(row_idx)
+        row_idx += 1
+    return np.array(out).T

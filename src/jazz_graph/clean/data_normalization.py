@@ -24,7 +24,7 @@ def tokenize_title(title) -> list[str]:
     return [token.strip() for token in title.strip().split(' ') if token]
 
 def remove_punctuation(tokens: list[str]) -> list[str]:
-    punct = r'[:;.,\'"`<>\[\]\(\)-]'
+    punct = r'[:;.,\'"`<>\[\]\(\)-\/\\]'
     processed_tokens = []
     for token in tokens:
         while re.search(punct, token):
@@ -46,10 +46,17 @@ def expand_abbreviations(tokens) -> list[str]:
 def remove_stop_words(tokens: list[str]) -> list[str]:
     return tokens
 
+def clean_remasters(title):
+    title = re.sub('Rudy Van Gelder (Edition|Remaster)( \d\d\d\d)?', '', title, flags=re.IGNORECASE)
+    title = re.sub('(\d\d\d\d )?(Digital )?Remaster(ed)?( \d\d\d\d)?', '', title, flags=re.IGNORECASE)
+    title = re.sub("\d\d Bit Master(ing)?", '', title, flags=re.IGNORECASE)
+    return title
+
 @lru_cache(maxsize=128)
 def normalize_title(title: str) -> str:
     title = normalize('NFD', title).lower()
     title = remove_parentheticals(title)
+    title = clean_remasters(title)
     title_tokens = tokenize_title(title)
     title_tokens = expand_abbreviations(title_tokens)
     title_tokens = remove_punctuation(title_tokens)
