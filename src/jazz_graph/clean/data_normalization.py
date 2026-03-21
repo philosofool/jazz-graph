@@ -13,6 +13,7 @@ def remove_parentheticals(title: str) -> str:
         r'\(.*?feat\..*?\)',
         r'\(\d\.\d\smix\)',
         r'\(pitch corrected\)',
+        r'(legacy edition)'
         # remaster, stereo, live
     ]
     for reg in title_junk_strings:

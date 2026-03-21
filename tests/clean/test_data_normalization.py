@@ -28,7 +28,8 @@ def test_clean_remasters(title, expected):
     ('Footprints - Remastered', 'footprints'),
     ("Adam's Apple - Remastered 2000 / Rudy Van Gelder Edition", "adam s apple"),
     ("Human Nature (2022 Remaster)", "human nature"), # Miles Davis plays Michael Jackson
-    ("Teru - Rudy Van Gelder Edition/2000 Digital Remaster/24 Bit Mastering", "teru")
+    ("Teru - Rudy Van Gelder Edition/2000 Digital Remaster/24 Bit Mastering", "teru"),
+    ("Kind Of Blue (Legacy Edition)", "kind of blue")
 ])
 def test_normalize_title(title, expected):
     assert normalize_title(title) == expected, f"Got {normalize_title(title)}"
