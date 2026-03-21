@@ -4,17 +4,19 @@ from jazz_graph.recommendation.playlist import SpotifyListens
 
 class TestSpotifyListens:
     test_data = pd.DataFrame.from_records([
-        (1000, 1, 11, "Title 1", "Album 1", "Artist 1", '1999-01-07'),
-        (1000, 2, 10, "Title 1", "Album 2", "Artist 1", '2001-01-07'),
-        (1001, 3, 10, "Title 2", "Album 2", "Artist 1", '2001-01-07'),
+        (1000, 11, "Title 1", "Album 1", "Artist 1", '1999-01-07'),
+        (1000, 10, "Title 1", "Album 2", "Artist 1", '2001-01-07'),
+        (1001, 10, "Title 2", "Album 2", "Artist 1", '2001-01-07'),
     ], columns=[
         'discogs_id',
-        'recording_id',
         'release_group_id',
         'title',
         'album',
         'artist',
-        'release_date'])
+        'release_date'
+    ], index=[1, 2, 3]
+
+    )
 
     def test_lookup(self):
         spotify = SpotifyListens(self.test_data)

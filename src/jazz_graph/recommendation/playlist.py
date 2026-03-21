@@ -1,19 +1,20 @@
 """Handle incoming data for recommendation."""
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 import pandas as pd
 import numpy as np
 from jazz_graph.clean.data_normalization import normalize_title
 
 
 class SpotifyListens:
-    def __init__(self, data: pd.DataFrame):
+    def __init__(self, recording_traits: pd.DataFrame):
+        self.recording_traits = recording_traits
         self.lookup: dict[tuple, int] = {}
-        for row in data.itertuples():
-            row.Index
+        for row in recording_traits.itertuples():
+            recording_id = row.Index
             title = normalize_title(row.title)
             album = normalize_title(row.album)
             artist = normalize_title(row.artist)
-            self.lookup[(title, album, artist)] = row.recording_id    # pyright: ignore [reportArgumentType]
+            self.lookup[(title, album, artist)] = recording_id    # pyright: ignore [reportArgumentType]
 
     def get_recording_id(self, record: dict) -> int:
         fields = 'master_metadata_track_name', 'master_metadata_album_album_name', 'master_metadata_album_artist_name'
@@ -34,7 +35,9 @@ class SpotifyListens:
             yield record, recording_id
 
     def get_listen_ids(self, spotify_data: list[dict], unique=True) -> np.ndarray:
-        ids = []
-        for _, rec_id in self.get_spotify_jazz(spotify_data, unique):
-            ids.append(rec_id)
-        return np.array(ids)
+        iterator = (rec_id  for _, rec_id in self.get_spotify_jazz(spotify_data, unique))
+        return np.fromiter(iterator)
+
+
+    def get_listen_data(self, spotify_data: list[dict], unique=True) -> Iterator:
+        return self.recording_traits.loc[self.get_listen_ids(spotify_data)].itertuples()
