@@ -88,13 +88,14 @@ def queries() -> SQL:
             SELECT
                 recording_id,
                 discogs_id as discogs_id,
-                release_date
+                release_date,
+                release_group_id
             FROM jazz_recordings
             WHERE jazz_recordings.release_date >= %(start)s
                 AND jazz_recordings.release_date < %(end)s
         """,
         performance_song_sql = """
-            SELECT
+            SELECT DISTINCT  -- there are duplicates in work_id in compositions.
                 jazz_recordings.recording_id,
                 compositions.work_id
             FROM jazz_recordings
@@ -103,7 +104,7 @@ def queries() -> SQL:
                 AND jazz_recordings.release_date < %(end)s
         """,
         performance_artist_sql = """
-            SELECT
+            SELECT DISTINCT  -- there are duplicates in recording_to_performer where a musican plays two instuments (Louis)
                 recording_to_performer.artist_id,
                 jazz_recordings.recording_id
             FROM
@@ -114,7 +115,7 @@ def queries() -> SQL:
                 AND jazz_recordings.release_date < %(end)s
         """,
         song_artist_sql = """
-            SELECT
+            SELECT DISTINCT  -- there are duplicates in work_id in compositions.
                 composer_id as artist_id,
                 work_id as work_id
             FROM compositions
@@ -132,11 +133,28 @@ def create_tables(start, end, directory):
     int64_col = pandera.Column("int64", coerce=True)
     int64_col_unique = pandera.Column("int64", coerce=True, unique=True)
 
-    artist_performance_schema = pandera.DataFrameSchema({'artist_id': int64_col, 'recording_id': int64_col}, ordered=True)
-    artist_song_schema = pandera.DataFrameSchema({'artist_id': int64_col, 'work_id': int64_col}, ordered=True)
-    performance_song_schema = pandera.DataFrameSchema({'recording_id': int64_col, 'work_id': int64_col}, ordered=True)
+    artist_performance_schema = pandera.DataFrameSchema(
+        {'artist_id': int64_col, 'recording_id': int64_col},
+        # NOTE: this means that we reject artists playing multiple instruments in the same
+        # performance. May be undesirable if we add edge labels later.
+        unique=["artist_id", "recording_id"],
+        ordered=True
+    )
+    artist_song_schema = pandera.DataFrameSchema(
+        {'artist_id': int64_col, 'work_id': int64_col},
+        # NOTE: we're primarily interestedin composers, not lyricists, but
+        # there's some duplication--I think because an arist composes and writes lyrics in
+        # a song. Maybe relax this requirement later.
+        unique=['artist_id', 'work_id'],
+        ordered=True)
+    performance_song_schema = pandera.DataFrameSchema(
+        {'recording_id': int64_col, 'work_id': int64_col},
+        # Why would there be duplicates here?
+        unique=['recording_id', 'work_id'],
+        ordered=True)
     artist_schema = pandera.DataFrameSchema({'artist_id': int64_col_unique})
-    performance_schema = pandera.DataFrameSchema({'recording_id': int64_col_unique, 'release_date': pandera.Column('')})
+    performance_schema = pandera.DataFrameSchema(
+        {'recording_id': int64_col_unique, 'release_date': pandera.Column(''), 'release_group_id': int64_col})
     song_schema = pandera.DataFrameSchema({'work_id': int64_col_unique})
 
     sql = queries()
