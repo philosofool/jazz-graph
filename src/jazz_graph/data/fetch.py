@@ -4,7 +4,7 @@ import pandas as pd
 import psycopg
 
 def fetch_recording_traits(
-        start: pd.Timestamp | None =None, end: pd.Timestamp | None = None, use_proto: bool = False) -> pd.DataFrame:
+        start: pd.Timestamp | None = None, end: pd.Timestamp | None = None, use_proto: bool = False) -> pd.DataFrame:
     """Helper function to retrive known jazz recordings in MusicBrainz.
 
     start:
@@ -19,7 +19,6 @@ def fetch_recording_traits(
     The data in jazz_recorings.
 
     """
-    conn = psycopg.connect("dbname=musicbrainz_db user=philosofool")
     if use_proto:
         assert start is None and end is None, "Start and end should be None if using prototyping data."
         start = pd.Timestamp('1957-01-01')
@@ -30,7 +29,8 @@ def fetch_recording_traits(
     SELECT * FROM jazz_recordings
     WHERE jazz_recordings.release_date >= %(start)s
         AND jazz_recordings.release_date < %(end)s;"""
-    return pd.read_sql(sql, conn, params={'start': start, 'end': end})
+    with psycopg.connect("dbname=musicbrainz_db user=philosofool") as conn:
+        return pd.read_sql(sql, conn, params={'start': start, 'end': end})
 
 def fetch_discogs_to_recording_id():
     """Helper funcitnoto retrive id mapping from discogs to recording."""
@@ -40,6 +40,7 @@ def fetch_discogs_to_recording_id():
 
 def fetch_compositions():
     """Retrives compositions table."""
-    conn = psycopg.connect("dbname=musicbrainz_db user=philosofool")
-    sql = "SELECT * FROM compositions;"
-    return pd.read_sql(sql, conn)
+
+    with psycopg.connect("dbname=musicbrainz_db user=philosofool") as conn:
+        sql = "SELECT * FROM compositions;"
+        return pd.read_sql(sql, conn)
