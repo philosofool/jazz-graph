@@ -453,6 +453,13 @@ class MatchDiscogs:
 
     def songs_on(self, album) -> set:
         """Return the songs on this album."""
+        import warnings
+        warnings.warn(
+            "songs_on() is deprecated and will be removed. "
+            "Jazz labeling is now determined at the release group level.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         norm_album = self.normalize(album)
         tracklist = self.discogs.tracklist()
         matched_songs = tracklist.get(norm_album, set())
@@ -484,14 +491,5 @@ class MatchDiscogs:
         row:
             A sequence with strings song, album artist as the first three elements.
         """
-        song, album, artist = row[2:5]
-
-        # check this matches a title and song of a jazz recording.
-        matched_songs = self.songs_on(album)
-        if not matched_songs:
-            return {}
-        song_norm = self.normalize(song)
-        if not song_norm in matched_songs:
-            return {}
-        # if so, return the matching discog record.
+        _, album, artist = row[2:5]
         return self.match_artist_album(album, artist)

@@ -35,6 +35,7 @@ class TestInMemDiscogs:
 
 
 class TestMatchDiscogs:
+    # TODO: create a better fixture for this.
     path = '/workspace/tests/test_releases.jsonl'
 
     def test_match_discogs(self):
@@ -42,6 +43,10 @@ class TestMatchDiscogs:
         row = (1, 2, "Sly", "Head Hunters", "Herbie Hancock")
         result = match_discogs.matching_discog(row)
         assert result['id'] == 31381, "This should match Herbie Hancock's artist id in the data."
+
+        row = (1, 2, None, "Head Hunters", "Herbie Hancock")
+        result = match_discogs.matching_discog(row)
+        assert result['id'] == 31381, "Song title is unnecessary; should match Herbie Hancock's artist id in the data."
 
         row = (1, 2, "It's Herbie Hancock", "Head Hunters", "Chris Farley")
         result = match_discogs.matching_discog(row)
