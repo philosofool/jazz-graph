@@ -54,7 +54,7 @@ def remove_punctuation(tokens: list[str]) -> list[str]:
     return processed_tokens
 
 def expand_abbreviations(tokens) -> list[str]:
-    abbreviations = {'vol.': 'volume', 'e.p.': 'ep'}
+    abbreviations = {'vol.': 'volume', 'e.p.': 'ep', 'pt.': 'part'}
     processed_tokens = []
     for token in tokens:
         if (result := re.search(r'\w+\.', token)):
