@@ -44,7 +44,8 @@ def test_clean_remasters(title, expected):
     ("A Love Supreme (Deluxe Edition)", "a love supreme"),  # album — untouched
     ("a love supreme, part i: acknowledgement", "acknowledgement"),  # already-lowercased input
     ('A Love Supreme, Part 3: Pursuance / A Love Supreme, Part 4: Psalm', 'pursuance psalm'),
-    ('A Love Supreme, Pt. IV - Psalm', 'psalm')
+    ('A Love Supreme, Pt. IV - Psalm', 'psalm'),
+    ("The", 'the') # dumb case, but I accidentally wrote code where this one failed.
 ])
 def test_normalize_title(title, expected):
     assert normalize_title(title) == expected, f"Got {normalize_title(title)}"

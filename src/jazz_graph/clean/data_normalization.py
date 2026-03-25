@@ -64,7 +64,7 @@ def expand_abbreviations(tokens) -> list[str]:
     return processed_tokens
 
 def remove_stop_words(tokens: list[str]) -> list[str]:
-    if tokens[0] == 'the' and len(tokens) > 1:
+    if len(tokens) > 1 and tokens[0] == 'the':
         return tokens[1:]
     return tokens
 
