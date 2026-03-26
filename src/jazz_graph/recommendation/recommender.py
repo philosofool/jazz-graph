@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeAlias
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -15,6 +15,8 @@ from jazz_graph.training.logging import load_embeddings
 if TYPE_CHECKING:
     from torch_geometric.data import HeteroData
 
+
+Recommendations: TypeAlias = tuple[np.ndarray[tuple[int], np.dtype[np.int64]], np.ndarray[tuple[int], np.dtype[np.float64]], np.ndarray[tuple[int], np.dtype[np.int64]]]
 
 def cosine_similarity(user_embedding: torch.Tensor, performance_embedding: torch.Tensor) -> torch.Tensor:
     """Cosine similarity."""
@@ -61,8 +63,12 @@ class LookupRecordings:
         data = self.data.loc[listens_subset]
         return data['ids'].to_numpy()
 
-    def mask_listens(self, listens: list[int]):
+    def mask_data_listens(self, listens: list[int] | np.ndarray) -> np.ndarray[tuple[int], np.dtype[np.bool_]]:
         return self.data.index.isin(listens)
+
+    def mask_node_listens(self, listens: list[int] | np.ndarray) -> np.ndarray[tuple[int], np.dtype[np.bool_]]:
+        mask = self.mask_data_listens(listens)
+        return self.data['ids']
 
     def lookup_recording_ids(self, indexes: np.ndarray) -> np.ndarray:
         """Get recording ids from a collection of node indexes."""
@@ -100,14 +106,15 @@ class Recommender:
         user_embedding = aggregate_user_embeddings(relevant_embeddings)
         return user_embedding
 
-    def get_recommendations(self, listens: list[int]) -> tuple:
+    def get_recommendations(self, listens: list[int]) -> Recommendations:
         user_embedding = self.make_user_embedding(listens)
         similarity_scores = dot_product_similarity(user_embedding, self.embeddings.weight)
-        recommendations, scores, _ = self._sort_scores(similarity_scores)
-        return recommendations, scores
+        recommendations, scores, mask = self._sort_scores(similarity_scores)
+        return recommendations, scores, mask
 
-    def _sort_scores(self, scores) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def _sort_scores(self, scores) -> Recommendations:
         scores = scores.view(-1)
+        # return the node indexes, sorted by score.
         recommendations = torch.argsort(scores, descending=True)
         rec_recordings = self.lookup_recordings.lookup_recording_ids(recommendations.numpy())
         return rec_recordings, scores[recommendations].numpy(), recommendations.numpy()
@@ -130,8 +137,8 @@ class InferenceRecommender(Recommender):
             node.n_id = torch.arange(node.x.size(0))
 
     @torch.no_grad()
-    def get_recommendations(self, listens: list[int]) -> tuple:
-        """Get recommendations based on input ids.
+    def get_recommendations(self, listens: list[int]) -> Recommendations:
+        """Get recommendations based on input recording ids.
 
         Returns
         -------
@@ -142,13 +149,14 @@ class InferenceRecommender(Recommender):
         self.model.eval()
         x_dict, edge_index_dict = self.data.x_dict, self.data.edge_index_dict
         performance_embed = self.model(x_dict, edge_index_dict, self.data)['performance']
-        listens_mask = self.lookup_recordings.mask_listens(listens)
 
-        listened_perf = performance_embed[listens_mask]
-        novel_perf = performance_embed
-        raw_scores = (novel_perf @ listened_perf.T)
+        familiar_nodes = self.lookup_recordings.lookup_node_index(listens)
+        familiar_perf = performance_embed[familiar_nodes]
+        # novel_perf = performance_embed
+        raw_scores = (performance_embed @ familiar_perf.T)
         scores = raw_scores.sum(dim=-1)
 
+        listens_mask = self.lookup_recordings.mask_data_listens(listens)
         rec_recordings, scores_sorted, sort_index = self._sort_scores(scores)
 
         return rec_recordings, scores_sorted, listens_mask[sort_index]
@@ -210,7 +218,7 @@ class PredictLinkRecommender(Recommender):
         for node_type in new_data.metadata()[0]:
             new_data[node_type].n_id = torch.arange(new_data[node_type].num_nodes)
 
-
+        # This is obviously a hack. It's safe, but there should be a better way...
         with AmndedEmbeddings(self.model, new_artist_embed) as model:
             with torch.no_grad():
                 z = model(new_data.x_dict, new_data.edge_index_dict, new_data)
@@ -242,3 +250,183 @@ class AmndedEmbeddings:
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.model.artist_embed = self._old_embed
+
+
+class RandomWalkRecommender(Recommender):
+    """Recommend performances by a two-hop random walk of the graph.
+
+    The walk hops via any relation edge to an adjacent node then hops back to
+    any node of the same type as the origin node.
+
+    Used as a baseline model for making recommendations.
+    """
+    def __init__(self, data: HeteroData, lookup: LookupRecordings, seed: int|None):
+        self.data = data
+        self.node_type = 'performance'
+        self.lookup_recordings = lookup
+        self._seed = seed
+
+    def get_recommendations(self, listens):
+        """Get recommended recording_ids, their scores and a mask of input ids."""
+        node_ids = self.lookup_recordings.lookup_node_index(listens)
+        random_walks = self.heterogeneous_two_hop_random_walk(torch.from_numpy(node_ids), seed=self._seed)
+        rec_node_ids = random_walks[:, 1]
+        recording_ids = self.lookup_recordings.lookup_recording_ids(rec_node_ids.numpy().tolist())
+        recording_ids, mask = self._dedup_and_mask_listens(recording_ids, listens)
+        return recording_ids, np.zeros_like(recording_ids), mask
+
+    def _dedup_and_mask_listens(self, recording_ids, listens):
+        _, rec_idx = np.unique(recording_ids, return_index=True)
+        recording_ids = recording_ids[np.sort(rec_idx)]
+        mask = np.isin(recording_ids, listens)
+        return recording_ids, mask
+
+    # @staticmethod
+    def heterogeneous_two_hop_random_walk(
+        self,
+        # data: HeteroData,
+        # node_type: str,
+        node_indices: torch.Tensor,
+        num_walks: int = 10,
+        return_intermediate: bool = False,
+        seed: int | None = None
+    ) -> torch.Tensor:
+        # Claude.ai provided this code.
+        """
+        Perform two-hop random walks on a HeteroData graph, starting and ending
+        at nodes of the same type (origin -> intermediate -> origin-type node).
+
+        Each walk follows one outgoing (or incoming) edge to an intermediate node
+        of a different type, then follows one edge back to a node of the original
+        type. The destination may be the origin node itself.
+
+        Args:
+            data:               A PyTorch Geometric HeteroData object.
+            node_type:          The starting (and ending) node type, e.g. 'artist'.
+            node_indices:       1-D tensor of node indices to start walks from.
+            num_walks:          Number of walks to attempt per source node.
+            return_intermediate: If True, also return the intermediate node tensor.
+
+        Returns:
+            walks: LongTensor of shape (N * num_walks, 2) where columns are
+                [source_node_index, destination_node_index], both in the
+                coordinate space of `node_type`. Invalid/dead-end walks are
+                represented as -1.
+            (optional) intermediates: LongTensor of shape (N * num_walks,) with
+                the intermediate node index visited, -1 for dead ends.
+        """
+        generator = torch.Generator()
+        if seed is not None:
+            generator.manual_seed(seed)
+
+        node_type = self.node_type
+        data = self.data
+        node_indices = node_indices.long()
+        N = node_indices.size(0)
+        total = N * num_walks
+
+        # Expand source indices so each node appears num_walks times.
+        sources = node_indices.repeat_interleave(num_walks)  # (total,)
+
+        # Collect all edge relations that touch `node_type`.
+        # We separate them into:
+        #   forward: node_type -[rel]-> other_type
+        #   backward: other_type -[rel]-> node_type  (we traverse in reverse)
+        forward_edges = []  # (src_indices, dst_indices, other_type)
+        backward_edges = []  # (other_indices, dst_indices, other_type) stored as
+        #                      other->node_type adjacency for the return hop
+
+        for (src_type, rel, dst_type), edge_index in data.edge_index_dict.items():
+            if src_type == node_type and dst_type != node_type:
+                forward_edges.append((edge_index, dst_type, "forward"))
+            if dst_type == node_type and src_type != node_type:
+                # Reverse traversal: we can walk *backward* along this edge
+                forward_edges.append((edge_index.flip(0), src_type, "backward"))
+
+        if not forward_edges:
+            raise ValueError(f"No edges found leaving node type '{node_type}'.")
+
+        # Build adjacency dicts for fast neighbour lookup.
+        # adj_out[other_type] : dict[int -> Tensor]  node_type node -> neighbours
+        # adj_back[other_type]: dict[int -> Tensor]  other_type node -> node_type nodes
+        adj_out: dict[str, dict] = {}
+        adj_back: dict[str, dict] = {}
+
+        for (src_type, rel, dst_type), edge_index in data.edge_index_dict.items():
+            srcs, dsts = edge_index[0], edge_index[1]
+
+            if src_type == node_type and dst_type != node_type:
+                if dst_type not in adj_out:
+                    adj_out[dst_type] = {}
+                for s, d in zip(srcs.tolist(), dsts.tolist()):
+                    adj_out[dst_type].setdefault(s, []).append(d)
+                # Return hop: from dst_type back to node_type
+                if dst_type not in adj_back:
+                    adj_back[dst_type] = {}
+                for s, d in zip(dsts.tolist(), srcs.tolist()):
+                    adj_back[dst_type].setdefault(s, []).append(d)
+
+            if dst_type == node_type and src_type != node_type:
+                # Can also enter via reverse: node_type <- other_type
+                if src_type not in adj_out:
+                    adj_out[src_type] = {}
+                for s, d in zip(dsts.tolist(), srcs.tolist()):
+                    adj_out[src_type].setdefault(s, []).append(d)
+                if src_type not in adj_back:
+                    adj_back[src_type] = {}
+                for s, d in zip(srcs.tolist(), dsts.tolist()):
+                    adj_back[src_type].setdefault(s, []).append(d)
+
+        dest_nodes = torch.full((total,), -1, dtype=torch.long)
+        inter_nodes = torch.full((total,), -1, dtype=torch.long)
+
+        other_types = list(set(adj_out.keys()) & set(adj_back.keys()))
+        if not other_types:
+            raise ValueError(
+                f"No round-trip paths found for node type '{node_type}'."
+            )
+
+        for i, src in enumerate(sources.tolist()):
+            # --- Hop 1: pick a random intermediate type, then a random neighbour ---
+            # Gather all reachable intermediate nodes across all relation types.
+            candidates: list[tuple[str, int]] = []
+            for ot in other_types:
+                if src in adj_out[ot]:
+                    for nb in adj_out[ot][src]:
+                        candidates.append((ot, nb))
+
+            if not candidates:
+                continue  # dead end — stays -1
+
+            rand_idx = torch.randint(len(candidates), (1,), generator=generator).item()
+            inter_type, inter_node = candidates[rand_idx]
+            inter_nodes[i] = inter_node
+
+            # --- Hop 2: from intermediate node back to node_type ---
+            return_candidates = adj_back[inter_type].get(inter_node, [])
+            if not return_candidates:
+                continue  # dead end on return
+
+            rand_idx2 = torch.randint(len(return_candidates), (1,), generator=generator).item()
+            dest_nodes[i] = return_candidates[rand_idx2]
+
+        walks = torch.stack([sources, dest_nodes], dim=1)  # (total, 2)
+
+        if return_intermediate:
+            return walks, inter_nodes
+        return walks
+
+
+def filter_valid_walks(walks: torch.Tensor) -> torch.Tensor:
+    """Remove walks that hit a dead end (destination == -1)."""
+    return walks[walks[:, 1] != -1]
+# ```
+
+# **How it works for your schema:**
+
+# The walk follows a two-hop pattern. Starting from, say, an `artist` node, hop 1 traverses *any* edge that connects `artist` to another type — so it can land on either a `performance` (via `performs`) or a `song` (via `composes`). Hop 2 then traverses back along any edge that returns to `artist`. The schema's bidirectional relations make this natural:
+# ```
+# artist → (performs) → performance → (performs, reversed) → artist
+# artist → (composes) → song        → (composes, reversed) → artist
+# artist → (performs) → performance → (performing, reversed) → ...
+#   [dead end — performance→song has no return to artist]
