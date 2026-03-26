@@ -391,6 +391,9 @@ class InMemDiscogs:
         release_ids = self._norm_title_to_release[norm_title]
         return [self._release_data[id] for id in release_ids]
 
+    def normalize(self, title: str) -> str:
+        return normalize_title(title)
+
     def _process_releases(self):
         with jsonlines.open(self.release_path) as f:
             for release in f:
@@ -467,21 +470,18 @@ class MatchDiscogs:
 
     def match_artist_album(self, album, artist) -> dict:
         """Return the discog record matching the input artist and album title."""
-        norm_artist = self.normalize(artist)
-        norm_album = self.normalize(album)
-        album_matches = self.discogs.get_albums_matching_title(norm_album)
+        album_matches = self.discogs.get_albums_matching_title(album)
         for album in album_matches:
             artists = {self.normalize(artist['name']) for artist in album['artists']}
             # In the extremely rare instance that that same artist produced two albums by the same name
             # this would return the first match.
-            if norm_artist in artists:
+            if self.normalize(artist) in artists:
                 return album
         return {}
 
-    @staticmethod
-    def normalize(value: str) -> str:
+    def normalize(self, value: str) -> str:
         """Normalize an input string."""
-        return normalize_title(value)
+        return self.discogs.normalize(value)
 
     def matching_discog(self, row: list | tuple) -> dict:
         """Get the discog record matching row data.
