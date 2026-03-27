@@ -48,6 +48,13 @@ class LookupRecordings:
         self.data = data
 
     @classmethod
+    def from_hetero_data(cls, data: HeteroData) -> "LookupRecordings":
+        rec_ids = data['performance'].x[:, 1].numpy()
+        ids = np.arange(rec_ids.size)
+        df = pd.DataFrame({'recording_ids': rec_ids, 'ids': ids}).set_index('recording_ids')
+        return LookupRecordings(df)
+
+    @classmethod
     def from_path(cls, node_data_path):
         data = cls._get_lookup(node_data_path)
         return cls(data)
@@ -128,10 +135,10 @@ class InferenceRecommender(Recommender):
     This is used for testing and prototyping, where we want to use an in-memory
     model, rather than cached embeddings, to make an inference.
     """
-    def __init__(self, model: JazzModel, data: HeteroData, lookup: LookupRecordings):
+    def __init__(self, model: JazzModel, data: HeteroData):
         self.model = model
         self.data = data
-        self.lookup_recordings = lookup
+        self.lookup_recordings = LookupRecordings.from_hetero_data(data)
         for node_type in data.metadata()[0]:
             node = self.data[node_type]
             node.n_id = torch.arange(node.x.size(0))

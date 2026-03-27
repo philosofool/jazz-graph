@@ -42,6 +42,19 @@ class TestLookupRecordings:
         data = pd.DataFrame({'ids': [1, 2]}, index=[101, 102])
         lookup = LookupRecordings(data)
 
+    def test_from_hetero_data(self):
+        data = HeteroData()
+        data['performance'].x = torch.tensor([
+            [1958, 1957, 1997, 1963, 1965],
+            [20, 21, 22, 24, 23]]
+        ).t()
+
+        lookup = LookupRecordings.from_hetero_data(data)
+        performance_ids = data['performance']
+        np.testing.assert_array_equal(lookup.data.index.to_numpy(), [20, 21, 22, 24, 23])
+        np.testing.assert_array_equal(lookup.data['ids'], np.arange(5))
+
+
 
 @pytest.fixture
 def hetero_data() -> HeteroData:
@@ -100,8 +113,6 @@ class TestPredictLinkRecommender:
         np.testing.assert_array_equal(mask, expected_mask)
         assert mask.dtype == np.int64
 
-
-
     def test_inductive_recommend(self, recommender):
         user_listens = [21, 22]
         new_nodes, new_edges, new_embed = recommender.get_user_parameters(user_listens)
@@ -114,10 +125,15 @@ class TestPredictLinkRecommender:
 class TestInferenceRecommender:
 
     def test_get_recommendations(self, hetero_data):
-        recording_traits = pd.DataFrame({
-            'ids': [1, 0, 3, 2, 4]
-        }, index=[20, 21, 22, 24, 23])
-        lookup = LookupRecordings(recording_traits)
+        # recording_traits = pd.DataFrame({
+        #     'ids': [1, 0, 3, 2, 4]
+        # }, index=[20, 21, 22, 24, 23])
+        # lookup = LookupRecordings(recording_traits)
+        # hetero_data = HeteroData()
+        hetero_data['performance'].x = torch.tensor([
+            [1958, 1957, 1997, 1963, 1965],
+            [21, 20, 23, 22, 24]]
+        ).t()
         embeddings = torch.tensor([
             [.1, .1],
             [1, 0],
@@ -133,20 +149,20 @@ class TestInferenceRecommender:
             def eval(self):
                 self._eval = True
 
-            def __call__(self, x_dict, edge_index_dict, data) -> dict[str, torch.tensor]:
+            def __call__(self, x_dict, edge_index_dict, data) -> dict[str, torch.Tensor]:
                 return {
                     'performance': embeddings
                 }
 
         model = Model()
-        recommender = InferenceRecommender(model, hetero_data, lookup)
+        recommender = InferenceRecommender(model, hetero_data)
         recommendation, scores, mask = recommender.get_recommendations([20, 22])
 
         # this is (embeddings @ embeddings[[1, 3]].T).sum(-1)
         unsorted_scores = torch.tensor([0.1300, 1.2000, 0.1400, 0.2500, 0.3900])
         expected_idx = torch.argsort(unsorted_scores, descending=True).numpy()
-        expected_rec = np.array([20, 21, 22, 24, 23])[expected_idx]
-        expected_mask = np.array([True, False, True, False, False])[expected_idx]
+        expected_rec = np.array([21, 20, 23, 22, 24])[expected_idx]
+        expected_mask = np.array([False, True, False, True, False])[expected_idx]
 
         assert model._eval is True
         np.testing.assert_array_almost_equal(scores, unsorted_scores[expected_idx])
