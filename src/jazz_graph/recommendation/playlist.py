@@ -23,6 +23,24 @@ class SpotifyListens:
 
     def get_spotify_jazz(self, spotify_data: list[dict], unique=True) -> Iterable[tuple[dict, int]]:
         """Return a generator for jazz records in spotify data."""
+        yield from self._yield_spotify_matches(spotify_data, unique, False)
+
+    def get_spotify_misses(self, spotify_data: list[dict], unique=True) -> Iterable[tuple[dict, int]]:
+        """Return a generator for jazz records in spotify data."""
+        yield from self._yield_spotify_matches(spotify_data, unique, True)
+
+        # seen = set()
+        # for record in spotify_data:
+        #     spot_id = record['spotify_track_uri']
+        #     if unique and spot_id in seen:
+        #         continue
+        #     seen.add(spot_id)
+        #     recording_id = self.get_recording_id(record)
+        #     if recording_id is None:
+        #         continue
+        #     yield record, recording_id
+
+    def _yield_spotify_matches(self, spotify_data: list[dict], unique, invert) -> Iterable[tuple[dict, int]]:
         seen = set()
         for record in spotify_data:
             spot_id = record['spotify_track_uri']
@@ -31,12 +49,16 @@ class SpotifyListens:
             seen.add(spot_id)
             recording_id = self.get_recording_id(record)
             if recording_id is None:
+                if invert:
+                    yield record, None
                 continue
-            yield record, recording_id
+            elif not invert:
+                yield record, recording_id
+
 
     def get_listen_ids(self, spotify_data: list[dict], unique=True) -> np.ndarray:
         iterator = (rec_id  for _, rec_id in self.get_spotify_jazz(spotify_data, unique))
-        return np.fromiter(iterator)
+        return np.fromiter(iterator, dtype=np.int64)
 
 
     def get_listen_data(self, spotify_data: list[dict], unique=True) -> Iterator:
