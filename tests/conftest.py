@@ -38,9 +38,9 @@ def recording_traits():
         "index": [
             159729,
             159730,
-            270583,
-            270585,
-            323177,
+            270583,  # So What
+            270585,  # Blue in Green
+            323177,  # Mr. PC
             384218,
             384219,
             384220,
@@ -210,14 +210,14 @@ def recording_traits():
             ]
         ]
     }
-    return pd.DataFrame.from_records(traits['columns'], index=traits['index'], columns=traits['columns'])
+    return pd.DataFrame.from_records(traits['data'], index=traits['index'], columns=traits['columns'])
 
 @pytest.fixture
 def spotify_data():
     """This is basically every other song on the relevant albums.
 
     These should match the data in recording traits. The are from
-    someones (my) actual spotify data dump, so represent real
+    someone's (my) actual spotify data dump, so represent real
     spotify data.
     """
     return [
