@@ -5,6 +5,7 @@ matplotlib
 numpy
 pandas
 psycopg[binary]
+pytorch-ignite
 pyarrow
 pytest
 scikit-learn

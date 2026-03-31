@@ -7,13 +7,28 @@
     "dockerfile": "Dockerfile",
     "context": ".."
   },
+  "remoteEnv": {
+    "PGHOST": "host.docker.internal",
+    "PGPORT": "5432",
+    "PGDATABASE": "musicbrainz_db",
+    "PGUSER": "philosofool",
+    //update password et al. as necessary.
+    "PGPASSWORD": "*****",
+    "PGSSLMODE": "disable",
+    "PGOPTIONS": "-c search_path=musicbrainz"
+  },
   "workspaceFolder": "/workspace",
   "mounts": [
     "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached"
   ],
   "remoteUser": "vscode",
-  // Uncomment to enable GPUs if they are available on your host machine.
-  // "runArgs": ["--gpus" "all"],
+  // Swap these to enable/disable GPUs if they are available on your host machine.
+  // "runArgs": [
+  //  "--add-host=host.docker.internal:host-gateway"
+  // ],
+  "runArgs": [
+    "--add-host=host.docker.internal:host-gateway", "--gpus", "all"
+  ],
   "postCreateCommand": "pip install --upgrade pip  && pip install -e .",
   "customizations": {
     "vscode": {

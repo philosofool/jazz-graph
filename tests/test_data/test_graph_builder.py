@@ -1,9 +1,10 @@
 import pandas as pd
 import numpy as np
-import pytest
 import torch
-from jazz_graph.data.graph_builder import prune_island_nodes, mask_node_degree, torch_values, torch_index, CreateTensors
-from torch_geometric.data import HeteroData
+from jazz_graph.data.graph_builder import prune_isolated_nodes, torch_values, torch_index, CreateTensors
+
+from jazz_graph.data.graph_transforms import map_to_new_node_index
+import pytest
 
 def test_torch_values():
     df = pd.DataFrame({'a': [1., 2., 3], 'b': [4., 5., 6.]})
@@ -34,19 +35,24 @@ def _write_parquet(df, filename: str, directory: str = '/workspace'):
     df.to_parquet(path, index=True)
     print(f"Wrote {df.shape[0]} rows, {df.shape[1]} columns to {path}.")
 
-class TestCreateTensors:
-    path = '/workspace/tests/test_pyg_data'
+@pytest.fixture(scope='module')
+def pyg_data_path(tmp_path_factory):
+    path = tmp_path_factory.mktemp("pyg_data")
+    def write_test_data(path):
+        songs = pd.DataFrame({'title': [1, 3, 2]})
+        artists = pd.DataFrame({'name': [100, 40, 50]})
+        performances = pd.DataFrame(
+            {'recording_id': [100, 101, 102],
+            'release_date': pd.to_datetime(['2000', '1956', '1976']),
+            'release_group_id': [200, 200, 2001],
+            'free_jazz': [0, 0, 1], 'bop': [1, 0, 1], 'vocal': [0, 1, 1]})
+        performance = performances.astype({'release_date': 'object'})  # assure that if source data is object type, casting will work.
 
-    songs = pd.DataFrame({'title': [1, 3, 2]})
-    artists = pd.DataFrame({'name': [100, 40, 50]})
-    performances = pd.DataFrame({'recording_id': [100, 101, 102], 'release_date': pd.to_datetime(['2000', '1956', '1976']), 'free_jazz': [0, 0, 1], 'bop': [1, 0, 1], 'vocal': [0, 1, 1]})
-    performance = performances.astype({'release_date': 'object'})  # assure that if source data is object type, casting will work.
+        song_artist_edges = pd.DataFrame({'work_id': [0, 1, 2], 'artist_id': [1, 2, 2]})
+        performance_artist_edges = pd.DataFrame({'recording_id': [0, 0, 1, 1, 2], 'artist_id': [1, 0, 1, 2, 2]})
+        performance_song_edge = pd.DataFrame({'work_id': [0, 1, 2], 'recording_id': [2, 1, 0]})
+        import os
 
-    song_artist_edges = pd.DataFrame({'work_id': [0, 1, 2], 'artist_id': [1, 2, 2]})
-    performance_artist_edges = pd.DataFrame({'recording_id': [0, 0, 1, 1, 2], 'artist_id': [1, 0, 1, 2, 2]})
-    performance_song_edge = pd.DataFrame({'work_id': [0, 1, 2], 'recording_id': [2, 1, 0]})
-    import os
-    if os.path.exists(path):
         _write_parquet(performances, 'performance_nodes.parquet', path)
         _write_parquet(artists, 'artist_nodes.parquet', path)
         _write_parquet(songs, 'song_nodes.parquet', path)
@@ -55,51 +61,59 @@ class TestCreateTensors:
         _write_parquet(performance_artist_edges, 'performance_artist_edges.parquet', path)
         _write_parquet(performance_song_edge, 'performance_song_edges.parquet', path)
 
-    def test_performances(self):
-        create = CreateTensors(self.path)
-        assert create.performances().shape == (3, 1)
-        assert create.performances().dtype == torch.int32
-        np.testing.assert_array_equal(create.performances(), np.array([2000, 1956, 1976]).reshape(-1, 1))
+    write_test_data(path)
+    yield path
 
-    def test_songs(self):
-        create = CreateTensors(self.path)
+
+class TestCreateTensors:
+
+    def test_performances(self, pyg_data_path):
+        create = CreateTensors(pyg_data_path)
+        assert create.performances().shape == (3, 2)
+        assert create.performances().dtype == torch.int64
+        np.testing.assert_array_equal(create.performances(), np.array([[2000, 100], [1956, 101], [1976, 102]]))
+
+    def test_songs(self, pyg_data_path):
+        create = CreateTensors(pyg_data_path)
         expected = torch.tensor([1, 3, 2]).reshape(-1, 1)
         np.testing.assert_array_equal(create.songs(), expected)
 
-    def test_artists(self):
-        create = CreateTensors(self.path)
+    def test_artists(self, pyg_data_path):
+        create = CreateTensors(pyg_data_path)
         expected = torch.tensor([100, 40, 50]).reshape(-1, 1)
         np.testing.assert_array_equal(create.artists(), expected)
 
-    def test_performance_artist_edges(self):
-        create = CreateTensors(self.path)
+    def test_performance_artist_edges(self, pyg_data_path):
+        create = CreateTensors(pyg_data_path)
         expected = torch.tensor([
             [1, 0, 1, 2, 2],
             [0, 0, 1, 1, 2]
         ])
         np.testing.assert_array_equal(create.artist_performance_edges(), expected)
 
-    def test_performance_song_edges(self):
-        create = CreateTensors(self.path)
+    def test_performance_song_edges(self, pyg_data_path):
+        create = CreateTensors(pyg_data_path)
         expected = np.array([
             [2, 1, 0],
             [0, 1, 2]
         ])
         np.testing.assert_array_equal(create.performance_song_edges(), expected)
 
-    def test_song_artist_edges(self):
-        create = CreateTensors(self.path)
+    def test_song_artist_edges(self, pyg_data_path):
+        create = CreateTensors(pyg_data_path)
         expected = torch.tensor([
             [1, 2, 2],
             [0, 1, 2]
         ])
         np.testing.assert_array_equal(create.artist_song_edges(), expected)
 
-    def test__mask_slices(self):
-        create = CreateTensors(self.path)
+    def test__mask_slices(self, pyg_data_path):
+        create = CreateTensors(pyg_data_path)
         create.performances()
         # hacky dependence on implementation but we don't need that much rigor here.
-        create._performances = pd.DataFrame(np.arange(0, 40_000).reshape(-1, 4))
+        create._performances = pd.DataFrame(
+            np.arange(0, 30_000).reshape(-1, 3),
+            columns=['release_date', 'recording_id', 'release_group_id'])
         train, dev, test = create._mask_slices()
         assert not np.any(train & dev & test), "The slices should be disjoint."
         assert np.all(train | dev | test), "The slices should be exhaustive."
@@ -109,63 +123,37 @@ class TestCreateTensors:
         assert np.sum(test) < 1200
         assert np.sum(dev) < 1200
 
-    def test_labels(self):
-        create = CreateTensors(self.path)
+    def test_labels(self, pyg_data_path):
+        create = CreateTensors(pyg_data_path)
         result = create.labels()
         expected = np.array([[0, 0, 1], [1, 0, 1], [0, 1, 1]]).T
         np.testing.assert_array_equal(result, expected)
 
-@pytest.fixture
-def hetero_data() -> HeteroData:
-    data = HeteroData()
-    data['artist'].x = torch.tensor([0, 1, 2, 3])
-    data['song'].x = torch.tensor([10, 11])
-    data['performance'].x = torch.tensor([20, 21, 22, 23, 24])
-
-    data['artist', 'performs', 'performance'].edge_index = torch.tensor([
-        [1,   1,  2,  2,  2],  # zero and three missing.
-        [0, 1, 0, 1, 2]   # 23 and 24 missing.
-    ])
-    data['performance', 'performing', 'song'].edge_index = torch.tensor([
-        [0, 1, 2, 3], # 24 missing; 23 is not an island (but has no performer info)
-        [0, 0, 1, 1]  # no song islands
-    ])
-    data['artist', 'composed', 'song'].edge_index = torch.tensor([
-        [0, 1],  # zero is not an island: only composes. Three is an island.
-        [0, 1]
-    ])
-
-    data['performance'].y = torch.tensor([1, 2, 3, 4, 5]) / 10
-    return data
-
-
-def test_prune_island_nodes(hetero_data):
+def test_prune_isolated_nodes(hetero_data):
     data = hetero_data
-    result = prune_island_nodes(data)
+    result = prune_isolated_nodes(data)
 
-    assert torch.all(result['artist'].x == torch.tensor([0, 1, 2]))
+    assert torch.all(result['artist'].x == torch.tensor([3, 1, 2]))
     assert torch.all(result['song'].x == torch.tensor([10, 11]))
     assert torch.all(result['performance'].x == torch.tensor([20, 21, 22, 23]))
-    assert torch.all(result['performance'].y == torch.tensor([1, 2, 3, 4]) / 10)
+    assert torch.all(result['performance'].y == torch.tensor([1, 2, 3, 5]) / 10), "All features associated with performance should be updated."
+    assert torch.all(result['artist'].y == torch.tensor([3, 5, 9], dtype=torch.float32)), "Features in artist labels should be dropped where the node is an island."
 
     expected_edges = hetero_data.metadata()[1]
-    assert expected_edges == result.metadata()[1]
-    for edge_type in expected_edges:
-        edge = result[edge_type]
-        for key, result_value in edge.items():
-            expected_value = data[edge_type][key]
-            assert torch.all(expected_value == result_value)
+    assert expected_edges == result.metadata()[1], "The result should have the same edges in this case."
 
-
-
-def test_mask_node_degree(hetero_data):
-    result = mask_node_degree(hetero_data)
-    # assert torch.all(result['artist'] == torch.tensor([0, 0, 0, 1]))
-    # assert torch.all(result['performance'] == torch.tensor([0, 0, 0, 0, 1]))
-    # assert torch.all(result['song'] ==  torch.tensor([0, 0]))
-    assert torch.all(result['artist'] == torch.tensor([1, 1, 1, 0]))
-    assert torch.all(result['performance'] == torch.tensor([1, 1, 1, 1, 0]))
-    assert torch.all(result['song'] ==  torch.tensor([1, 1]))
-
-    result = mask_node_degree(hetero_data, min_degree=2)
-    assert torch.all(result['artist'] ==  torch.tensor([0, 1, 1, 0])), "Artist 3 is an island, artist 0 has one composition edge."
+    expected_performs = torch.tensor([
+        [1,   1,  2,  2,  2],  # artist formerly at 3 is left shifted one.
+        [0, 1, 0, 1, 2]   # These are all he same.
+    ])
+    expected_performing = torch.tensor([
+        [0, 1, 2, 3], # performance formerly at 4 is left shifted.
+        [0, 0, 1, 1]  # song formerly at 2 is left shited.
+    ])
+    expected_composed = torch.tensor([
+        [0, 1],  # No shift from artists.
+        [0, 1]  # song formerly at 2 is left shifted.
+    ])
+    np.testing.assert_array_equal(result['performs'].edge_index, expected_performs)
+    np.testing.assert_array_equal(result['performing'].edge_index, expected_performing)
+    np.testing.assert_array_equal(result['composed'].edge_index, expected_composed)
