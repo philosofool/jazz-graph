@@ -63,6 +63,14 @@ class ExperimentLogger:
         with open(self.run_dir / "config.json", "w") as f:
             json.dump(config_dict, f, indent=2)
 
+    def config(self):
+        try:
+            with open(self.run_dir / "config.json", "r") as f:
+                return json.load(f)
+        except FileNotFoundError:
+            return None
+
+
     def log_metrics(self, epoch, metrics, split="train"):
         record = {
             "epoch": epoch,

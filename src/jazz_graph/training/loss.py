@@ -23,8 +23,8 @@ def nt_xent_loss(z1: torch.Tensor, z2: torch.Tensor, temperature: float = 0.5) -
     sim_matrix = torch.mm(z, z.t()) / temperature
 
     labels = torch.cat([
-        torch.arange(batch_size) + batch_size,   # z1[i] matches z2[i]
-        torch.arange(batch_size)                 # z2[i] matches z1[i]
+        torch.arange(batch_size, device=z.device) + batch_size,   # z1[i] matches z2[i]
+        torch.arange(batch_size, device=z.device)                 # z2[i] matches z1[i]
     ])
 
     # Mask out self-similarity (diagonal)

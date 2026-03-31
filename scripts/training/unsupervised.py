@@ -26,7 +26,7 @@ from torch_geometric import seed_everything
 from jazz_graph.data.fetch import fetch_recording_traits
 from jazz_graph.data.reporting import inspect_degrees
 from jazz_graph.etl.transforms import map_array, map_by_index
-from jazz_graph.metrics.embedding_metrics import UniformityLoss, MultiPositiveAlignment, EmbeddingStd
+from jazz_graph.metrics.embedding_metrics import AlignmentLoss, UniformityLoss, MultiPositiveAlignment, EmbeddingStd
 from jazz_graph.model.model import UnsupervisedJazzModel
 from jazz_graph.training.inspect import analyze_model_embeddings
 from jazz_graph.training.views import drop_random_nodes_and_edges
@@ -146,7 +146,7 @@ def make_album_match_trainer(model, optimizer, experiment_logger: ExperimentLogg
 
     trainer.add_event_handler(Events.EPOCH_COMPLETED, console_logging, 'Training', trainer)
     trainer.add_event_handler(Events.EPOCH_COMPLETED, log_experiment_handler, experiment_logger, 'train', trainer)
-    trainer.add_event_handler(Events.EPOCH_COMPLETED(every=5), make_analyze_embeddings(models_dir), model)
+    # trainer.add_event_handler(Events.EPOCH_COMPLETED(every=5), make_analyze_embeddings(models_dir), model)
     # trainer.add_event_handler(Events.COMPLETED, save_embeddings_handler, experiment_logger, model)
     trainer.add_event_handler(Events.COMPLETED, save_checkpoint_handler, experiment_logger, model, optimizer)
     return trainer
@@ -180,15 +180,14 @@ def make_trainer(model, optimizer, experiment_logger: ExperimentLogger):
             f"{node_type}_loss": RunningAverage(
                 output_transform=lambda out: out[node_type]['loss']
             ),
-            f"{node_type}_alignment": MultiPositiveAlignment(
+            f"{node_type}_alignment": AlignmentLoss(
                 output_transform=lambda out: (out[node_type]['h1'], out[node_type]['h2'])
             ),
-            f"{node_type}_uniformity": UniformityLoss(
-                output_transform=lambda out: (out[node_type]['h1'], out[node_type]['h2'])
+           f"{node_type}_uniformity": UniformityLoss(
+                output_transform=lambda out: out[node_type]['z1']
             ),
             f"{node_type}_embedding_std": EmbeddingStd(
-                output_transform=lambda out: (out[node_type]['h1'], out[node_type]['h2'])
-            ),
+                output_transform=lambda out: out[node_type]['z1'])
         }
 
     metrics = {}
@@ -203,7 +202,7 @@ def make_trainer(model, optimizer, experiment_logger: ExperimentLogger):
 
     trainer.add_event_handler(Events.EPOCH_COMPLETED, console_logging, 'Training', trainer)
     trainer.add_event_handler(Events.EPOCH_COMPLETED, log_experiment_handler, experiment_logger, 'train', trainer)
-    trainer.add_event_handler(Events.EPOCH_COMPLETED(every=5), make_analyze_embeddings(models_dir), model)
+    # trainer.add_event_handler(Events.EPOCH_COMPLETED(every=5), make_analyze_embeddings(models_dir), model)
     # trainer.add_event_handler(Events.COMPLETED, save_embeddings_handler, experiment_logger, model)
     trainer.add_event_handler(Events.COMPLETED, save_checkpoint_handler, experiment_logger, model, optimizer)
     return trainer
@@ -226,10 +225,11 @@ def make_analyze_embeddings(models_dir) -> Callable:
 
     return analyze
 
+
 if __name__ == '__main__':
     random_seed = 42
     seed_everything(random_seed)
-    models_dir = '/workspace/local_data/graph_parquet_proto'
+    models_dir = '/workspace/local_data/graph_parquet'
     assert os.path.exists(models_dir)
     create = CreateTensors(models_dir)
     data = make_jazz_data(create)
@@ -240,6 +240,7 @@ if __name__ == '__main__':
     run_to_load: str|None = None
 
     if run_to_load:
+        assert ' ' not in run_to_load, "Expected no spaces."
         if run_to_load == 'most_recent':
             run_to_load = max(Path("/workspace/experiments").iterdir(), key=lambda p: p.stat().st_mtime)
         experiment_logger = ExperimentLogger.from_run_dir(run_to_load)
@@ -272,9 +273,9 @@ if __name__ == '__main__':
             },
             'drop_edge_prob': None,
             'dataset': models_dir,
-            'lr': .001,
-            'batch_size': 256,
-            'temperature': .3
+            'lr': .003,
+            'batch_size': 128,
+            'temperature': .25
         }
         print(f"Initializing new model with configuration:\n{experiment_config}")
         experiment_logger = ExperimentLogger(root='/workspace/experiments', run_name=f'gnn_simCLR_{os.path.basename(models_dir)}', config=experiment_config)
@@ -310,17 +311,30 @@ if __name__ == '__main__':
     input_node_type = data_config['input_node_type']
 
     year_feature = data['performance'].x[:, 0]
-    train_loader = NeighborLoaderWithJitter(
-        data,
-        (input_node_type, year_feature),
-        num_neighbors=num_neighbors,
-        batch_size=experiment_config['batch_size'],
-        # input_nodes=(input_node_type, torch.arange(data[input_node_type].num_nodes)),
-        # shuffle=True
-    )
     trainer = make_album_match_trainer(model, optimizer, experiment_logger)
-    trainer.add_event_handler(
-        Events.EPOCH_STARTED,
-        lambda engine: train_loader.set_epoch(engine.state.epoch)
-    )
-    trainer.run(train_loader, max_epochs=1, epoch_length=4)
+    # trainer = make_album_match_trainer(model, optimizer, experiment_logger)
+
+    if False:
+        train_loader = NeighborLoader(
+            data,
+            num_neighbors=num_neighbors,
+            batch_size=experiment_config['batch_size'],
+            input_nodes=(input_node_type, torch.arange(data[input_node_type].num_nodes)),
+            # shuffle=True
+            #input_nodes=ordered_nodes,
+            shuffle=True,  # sampler already handles order
+        )
+    else:
+        train_loader = NeighborLoaderWithJitter(
+            data,
+            (input_node_type, year_feature),
+            num_neighbors=num_neighbors,
+            batch_size=experiment_config['batch_size'],
+        )
+
+        trainer.add_event_handler(
+            Events.EPOCH_STARTED,
+            lambda engine: train_loader.set_epoch(engine.state.epoch)
+        )
+
+    trainer.run(train_loader, max_epochs=3)

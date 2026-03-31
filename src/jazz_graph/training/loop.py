@@ -115,6 +115,8 @@ class UnsupervisedGNNTrainingLogic:
             results[node_type] = {
                 'loss': losses[node_type].item(),
                 'h1': h1_dict[node_type].detach(),
-                'h2': h2_dict[node_type].detach()
+                'h2': h2_dict[node_type].detach(),
+                'z1': z2_dict[node_type].detach(),
+                'z2': z2_dict[node_type].detach()
             }
         return results
