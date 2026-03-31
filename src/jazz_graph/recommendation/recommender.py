@@ -133,7 +133,8 @@ class InferenceRecommender(Recommender):
     represents the similarity of the correspondings songs.
 
     This is used for testing and prototyping, where we want to use an in-memory
-    model, rather than cached embeddings, to make an inference.
+    model, rather than cached embeddings, to make an inference. The beneift is
+    (1) saving time, (2) debugging and (3) introspection.
     """
     def __init__(self, model: JazzModel, data: HeteroData):
         self.model = model
@@ -141,7 +142,11 @@ class InferenceRecommender(Recommender):
         self.lookup_recordings = LookupRecordings.from_hetero_data(data)
         for node_type in data.metadata()[0]:
             node = self.data[node_type]
-            node.n_id = torch.arange(node.x.size(0))
+            # A bit of a hack, but the model classes look for this from a batch.
+            # TODO: models should introspect inputs; if 'batch['performance'].n_id' doesn't exist,
+            # create this tensor and use it w/out modifying input data.
+            if not hasattr(node, 'n_id'):
+                node.n_id = torch.arange(node.x.size(0))
 
     @torch.no_grad()
     def get_recommendations(self, listens: list[int]) -> Recommendations:
@@ -267,10 +272,10 @@ class RandomWalkRecommender(Recommender):
 
     Used as a baseline model for making recommendations.
     """
-    def __init__(self, data: HeteroData, lookup: LookupRecordings, seed: int|None):
+    def __init__(self, data: HeteroData, seed: int|None):
         self.data = data
         self.node_type = 'performance'
-        self.lookup_recordings = lookup
+        self.lookup_recordings = LookupRecordings.from_hetero_data(data)
         self._seed = seed
 
     def get_recommendations(self, listens):
@@ -427,13 +432,24 @@ class RandomWalkRecommender(Recommender):
 def filter_valid_walks(walks: torch.Tensor) -> torch.Tensor:
     """Remove walks that hit a dead end (destination == -1)."""
     return walks[walks[:, 1] != -1]
-# ```
 
-# **How it works for your schema:**
 
-# The walk follows a two-hop pattern. Starting from, say, an `artist` node, hop 1 traverses *any* edge that connects `artist` to another type — so it can land on either a `performance` (via `performs`) or a `song` (via `composes`). Hop 2 then traverses back along any edge that returns to `artist`. The schema's bidirectional relations make this natural:
-# ```
-# artist → (performs) → performance → (performs, reversed) → artist
-# artist → (composes) → song        → (composes, reversed) → artist
-# artist → (performs) → performance → (performing, reversed) → ...
-#   [dead end — performance→song has no return to artist]
+
+class ArtistWeightedRecommender(Recommender):
+    """Prioritize artists who appear in the inputs."""
+    def __init__(self, recording_traits: pd.DataFrame):
+        self.recording_traits = recording_traits
+
+    def get_recommendations(self, listens: list[int]) -> Recommendations:
+        listens_subset = self.recording_traits.index.intersection(listens) # prevent key error
+        familiar = self.recording_traits.loc[listens_subset]
+
+        recommendable = self.recording_traits.artist.isin(familiar.artist)
+        recommendations = self.recording_traits[recommendable]
+        recommendations = recommendations.sample(frac=1., random_state=42) # shuffle the recommendations so we don't order on initially sorted data.
+
+        artist_weight = familiar.artist.value_counts()
+        raw_scores = recommendations.artist.map(artist_weight).values
+        sorting = np.argsort(raw_scores)[::-1]
+        recommendations = recommendations.iloc[sorting]
+        return recommendations.index.to_numpy(), raw_scores[sorting], recommendations.index.isin(listens)

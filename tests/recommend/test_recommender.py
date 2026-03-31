@@ -7,7 +7,7 @@ from torch_geometric.data import HeteroData
 from torch_geometric.transforms import ToUndirected
 
 from jazz_graph.model.model import JazzModel
-from jazz_graph.recommendation.recommender import InferenceRecommender, LookupRecordings, PredictLinkRecommender
+from jazz_graph.recommendation.recommender import ArtistWeightedRecommender, InferenceRecommender, LookupRecordings, PredictLinkRecommender
 import pytest
 
 class TestLookupRecordings:
@@ -155,7 +155,7 @@ class TestInferenceRecommender:
                 }
 
         model = Model()
-        recommender = InferenceRecommender(model, hetero_data)
+        recommender = InferenceRecommender(model, hetero_data)  # pyright: ignore [reportArgumentType]
         recommendation, scores, mask = recommender.get_recommendations([20, 22])
 
         # this is (embeddings @ embeddings[[1, 3]].T).sum(-1)
@@ -170,3 +170,29 @@ class TestInferenceRecommender:
         np.testing.assert_array_equal(mask, expected_mask)
 
         # np.testing.assert_array_equal(mask, np.array([False, True, True, True, False]))
+
+
+class TestArtistWeightedRecommender:
+    def test_get_recommendations(self, recording_traits: pd.DataFrame):
+        listens = [
+            270583,  # So What
+            270585,  # Blue in Green
+            323177,  # Mr. PC
+        ]
+        recommender = ArtistWeightedRecommender(recording_traits)
+        recommendations, scores, mask = recommender.get_recommendations(listens)
+        assert set(recommendations[mask]) == set(listens), "The listens should be masked, and nothing else."
+
+        last_artist = None
+        known_artists = set()
+        last_score = np.inf
+        for i in range(recommendations.size):
+            score = scores[i]
+            recommendation = recommendations[i]
+            artist = recording_traits.loc[recommendation].artist
+            if artist == last_artist:
+                continue
+            assert artist not in known_artists, "When the artist changes, it should be novel."
+            assert score < last_score, "Scores should be descending with artist changes."
+            last_score = score
+            last_artist = artist
