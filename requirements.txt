@@ -2,7 +2,6 @@ fastparquet
 ipykernel
 jsonlines
 matplotlib
-neo4j
 numpy
 pandas
 psycopg[binary]

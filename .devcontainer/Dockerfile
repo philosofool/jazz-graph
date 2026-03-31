@@ -11,6 +11,11 @@ RUN apt-get update && apt-get install -y \
     libpq-dev postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
+RUN TORCH_VERSION=$(/opt/conda/bin/python -c "import torch; print(torch.__version__)") && \
+    /opt/conda/bin/python -m pip install --no-cache-dir \
+      torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric \
+      -f https://data.pyg.org/whl/torch-${TORCH_VERSION}.html
+
 # Install Python dependencies
 COPY requirements.txt /tmp/requirements.txt
 # RUN pip install --no-cache-dir -r /tmp/requirements.txt || true

@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from jazz_graph.schema.sql import TableSchema
+from jazz_graph.data.schema.sql import TableSchema
 import io
 
 if TYPE_CHECKING:
