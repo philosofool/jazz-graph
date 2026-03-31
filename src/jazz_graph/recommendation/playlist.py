@@ -20,7 +20,14 @@ class SpotifyListens:
 
     def get_recording_id(self, record: dict) -> int|None:
         fields = 'master_metadata_track_name', 'master_metadata_album_album_name', 'master_metadata_album_artist_name'
-        norm_key = tuple(normalize_title(record[field]) for field in fields)
+        # norm_key = tuple(normalize_title(record[field]) for field in fields)
+        norm_key = tuple()
+        for field in fields:
+            data = record.get(field)
+            if data is None:
+                return None
+            norm_key += (normalize_title(data),)
+
         return self.lookup.get(norm_key)
 
     def get_spotify_jazz(self, spotify_data: list[dict], unique=True) -> Iterable[tuple[dict, int]]:

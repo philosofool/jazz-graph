@@ -33,6 +33,13 @@ class TestSpotifyListens:
             'spotify_track_uri': 'spotify:track:1234abcd',  # <- wrong, obvs.
         }
         assert spotify.get_recording_id(spotify_record) == 2
+        spotify_record = {
+            'master_metadata_track_name': 'Title 1',
+            'master_metadata_album_artist_name': None,
+            'master_metadata_album_album_name': 'Album 2',
+            'spotify_track_uri': 'spotify:track:1234abcd',  # <- wrong, obvs.
+        }
+        assert spotify.get_recording_id(spotify_record) is None
 
     def test_get_spotify_jazz(self):
         spotify = SpotifyListens(self.test_data)
