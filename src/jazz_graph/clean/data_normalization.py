@@ -13,10 +13,10 @@ _ALS_PREFIX = re.compile(
 def strip_als_prefix(title: str) -> str:
     parts = title.split('/')
     parts = [_ALS_PREFIX.sub('', p.strip()) for p in parts]
-    return ' '.join(parts)
+    return '/'.join(parts)
 
 def punctuation():
-    return r'[:;.,\'"`<>\[\]\(\)-\/\\]'
+    return r'[:;.,\'"`<>\[\]\(\)-\/\\\u2018\u2019\u201c\u201d]'
 
 def remove_parentheticals(title: str) -> str:
     """Remove parenteticals that are not part of the title.
@@ -31,11 +31,15 @@ def remove_parentheticals(title: str) -> str:
         r'\(\d\.\d\smix\)',
         r'\(pitch corrected\)',
         r'\((legacy|deluxe) edition\)',
-        punctuation() + r'\s?mono$'
+        punctuation() + r'\s?mono$',
+        # Strip live venue/date annotations but preserve take numbers
+        # r'\s*[\/]\s*Live\s+At\b.*$',  # strips "/ Live At The Village Vanguard..."
+        r"\s*[\/]\s*Live\s+At\b.*$",
+        r'\s*[-–—]\s*Live\s+At\b.*$'  # strips "- Live At..."
         # remaster, stereo, live
     ]
     for reg in title_junk_strings:
-        title = re.sub(reg, '', title)
+        title = re.sub(reg, '', title, flags=re.IGNORECASE)
     return title
 
 def tokenize_title(title) -> list[str]:
@@ -45,8 +49,7 @@ def remove_punctuation(tokens: list[str]) -> list[str]:
     punct = punctuation()
     processed_tokens = []
     for token in tokens:
-        while re.search(punct, token):
-            token = re.sub(punct, ' ', token).strip()
+        token = re.sub(punct, '', token).strip()
         if token == '&':
             processed_tokens.append('and')
         elif token:
@@ -72,6 +75,7 @@ def clean_remasters(title):
     title = re.sub('Rudy Van Gelder (Edition|Remaster)( \d\d\d\d)?', '', title, flags=re.IGNORECASE)
     title = re.sub('(\d\d\d\d )?(Digital )?Remaster(ed)?( \d\d\d\d)?', '', title, flags=re.IGNORECASE)
     title = re.sub("\d\d Bit Master(ing)?", '', title, flags=re.IGNORECASE)
+    title = re.sub("(.*\[)keepnews collection(\])", r"\1\2", title, flags=re.IGNORECASE)
     return title
 
 @lru_cache(maxsize=128)
