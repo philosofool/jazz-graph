@@ -1,0 +1,33 @@
+[build-system]
+
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jazz-graph"                   # Your package name (must match src/ dir if using src layout)
+version = "0.1.1"                    # Semantic version
+description = "Tools for working with PyG and jazz graph model."
+readme = "README.md"                 # Long description
+license = { text = "MIT" }
+
+
+# Specify your Python compatibility
+requires-python = ">=3.10"
+
+# Dependencies installed automatically
+dependencies = [
+    "numpy>=1.26",
+    "torch>=2.8",
+    "torch-geometric",
+    "pandas"
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }   # Use src/ layout
+include-package-data = true
+
+[project.optional-dependencies]
+dev = ["pytest", "flake8", "jupyter"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
