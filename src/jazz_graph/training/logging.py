@@ -1,4 +1,5 @@
 from __future__ import annotations
+import inspect
 import json
 import jsonlines
 import os
@@ -7,6 +8,7 @@ from pathlib import Path
 import subprocess
 import shutil
 
+import psycopg
 from typing import TYPE_CHECKING
 
 import torch
@@ -17,13 +19,10 @@ if TYPE_CHECKING:
     from jazz_graph.model.model import NodeClassifier, LinkPredictionModel, JazzModel
 
 
-def get_git_commit():
-    try:
-        return subprocess.check_output(
-            ["git", "rev-parse", "HEAD"]
-        ).decode().strip()
-    except:
-        return None
+def get_git_commit() -> str:
+    return subprocess.check_output(
+        ["git", "rev-parse", "HEAD"]
+    ).decode().strip()
 
 def is_working_tree_dirty(path=".", untracked_only=True) -> bool:
     """
@@ -42,6 +41,36 @@ def is_working_tree_dirty(path=".", untracked_only=True) -> bool:
     )
     return bool(result.stdout.strip())
 
+def current_migration_name() -> str:
+    """Return the name of the caller's file plus truncated commit."""
+    caller_frame = inspect.stack()[1]
+    filename = Path(caller_frame.filename).stem
+    return filename + get_git_commit()[:10]
+
+
+def is_current_commit_migrated(cursor, conn) -> bool:
+    """Check if the current migration name exists in the database."""
+    # Do I really want to support conn and cursor here? Possibly YAGNI...
+    if cursor is not None:
+        applied = {
+            row[0]
+            for row in cursor.execute("SELECT version FROM schema_migrations")
+        }
+        return current_migration_name() in applied
+    elif conn is not None:
+        cursor = conn.cursor()
+        return is_current_commit_migrated(cursor, None)
+    else:
+        with psycopg.connect("dbname=musicbrainz_db user=philosofool") as conn:
+            cursor = conn.cursor()
+            return is_current_commit_migrated(cursor, None)
+
+
+def insert_current_migration(cursor):
+    cursor.execute(
+        "INSERT INTO schema_migrations (version) VALUES (%s)",
+        (current_migration_name(),)
+    )
 
 # Thanks to ChatGPT for creating this.
 class ExperimentLogger:

@@ -14,7 +14,7 @@ from jazz_graph.etl.load import LoadData
 from jazz_graph.data.schema.sql import Column, ForeignKey, PrimaryKey, TableSchema
 from jazz_graph.clean.string_date import date_precision, clean_string_date
 from jazz_graph.clean.data_normalization import normalize_title
-from jazz_graph.training.logging import is_working_tree_dirty, get_git_commit  # move this to a util!?!
+from jazz_graph.training.logging import insert_current_migration, is_working_tree_dirty, current_migration_name, is_current_commit_migrated
 
 
 class ProcessRows:
@@ -173,35 +173,19 @@ def test_deduplicate():
     assert 'Bar' in dedup.artist.values, "This data should not be one of the dropped rows."
     assert not any(('_norm' in col for col in dedup.columns)), "Should drop normalized columns."
 
-def current_migration_name() -> str:
-    return 'create_discogs_tables_' + get_git_commit()[:10]    # pyright: ignore
-
-
-def is_current_commit_migrated() -> bool:
-    with psycopg.connect("dbname=musicbrainz_db user=philosofool") as conn:
-        cursor = conn.cursor()
-        applied = {
-            row[0]
-            for row in cursor.execute("SELECT version FROM schema_migrations")
-        }
-    return current_migration_name() in applied
-
 
 if __name__ == '__main__':
     if is_working_tree_dirty():
         raise Exception("It is illegal to run this in a dirty state. Stash or commit all changes and re-run.")
-    if is_current_commit_migrated():
+    if is_current_commit_migrated(None, None):
         raise Exception("This commit has already been migrated to the db. Did you mean to make changes?")
     test_deduplicate()
 
     jazz_data_path = f'/workspace/local_data/{current_migration_name()}.csv'
-    try:
-        jazz_data = pd.read_csv(jazz_data_path)
-        print("Loaded cached csv of jazz data.")
-    except FileNotFoundError:
-        print("No cached data. Creating jazz data and caching.")
-        jazz_data = create_jazz_data()
-        jazz_data.to_csv(jazz_data_path, index=False)
+
+    print("No cached data. Creating jazz data and caching.")
+    jazz_data = create_jazz_data()
+    jazz_data.to_csv(jazz_data_path, index=False)
 
     jazz_data = deduplicate(jazz_data)
 
@@ -237,10 +221,7 @@ if __name__ == '__main__':
 
         recording_to_discog_loader.create_table(cursor)
         recording_to_discog_loader.load_data(recording_to_discogs_data, cursor)
-        cursor.execute(
-            "INSERT INTO schema_migrations (version) VALUES (%s)",
-            (current_migration_name(),)
-        )
+        insert_current_migration(cursor)
         create_jazz_recordings = """
         CREATE OR REPLACE VIEW jazz_recordings AS
         SELECT discogs_release.id as discogs_id, recording_first_release.*
