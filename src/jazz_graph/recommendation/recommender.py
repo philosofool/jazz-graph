@@ -9,7 +9,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 from collections.abc import Callable
 
-from jazz_graph.data.graph_builder import CreateTensors
+from jazz_graph.data.graph_builder.graph_builder import CreateTensors
 from jazz_graph.training.logging import load_embeddings
 
 if TYPE_CHECKING:
@@ -178,7 +178,7 @@ class InferenceRecommender(Recommender):
 ## Inductive Graph Recommender
 
 from jazz_graph.data.graph_transforms import extend_graph
-from jazz_graph.data.graph_builder import make_jazz_data, CreateTensors
+from jazz_graph.data.graph_builder.graph_builder import make_jazz_data, CreateTensors
 from jazz_graph.model.model import JazzModel
 
 class PredictLinkRecommender(Recommender):
