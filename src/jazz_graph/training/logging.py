@@ -66,11 +66,19 @@ def is_current_commit_migrated(cursor, conn) -> bool:
             return is_current_commit_migrated(cursor, None)
 
 
-def insert_current_migration(cursor):
-    cursor.execute(
-        "INSERT INTO schema_migrations (version) VALUES (%s)",
-        (current_migration_name(),)
-    )
+def insert_current_migration(cursor, conn):
+    if cursor is not None:
+        cursor.execute(
+            "INSERT INTO schema_migrations (version) VALUES (%s)",
+            (current_migration_name(),)
+        )
+    elif conn is not None:
+        cursor = conn.cursor()
+        return insert_current_migration(cursor, None)
+    else:
+        with psycopg.connect("dbname=musicbrainz_db user=philosofool") as conn:
+            cursor = conn.cursor()
+            return insert_current_migration(cursor, None)
 
 # Thanks to ChatGPT for creating this.
 class ExperimentLogger:
