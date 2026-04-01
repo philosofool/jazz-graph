@@ -10,8 +10,6 @@ from torch_geometric.transforms import ToUndirected
 
 from jazz_graph.data.graph_transforms import mask_node_degree, prune_graph_from_masks
 
-
-
 class CreateTensors:
     def __init__(self, directory):
         self.directory = directory
@@ -34,6 +32,13 @@ class CreateTensors:
         if self._songs is None:
             self._songs = self.load_parquet('song_nodes.parquet')
         return torch_values(self._songs)
+
+    def performances(self) -> torch.Tensor:
+        if self._performances is None:
+            self._performances = self.load_parquet('performance_nodes.parquet')
+            self._performances['release_date'] = self._performances.release_date.astype('datetime64[ms]').dt.year
+            self._performances = self._performances[['release_date', 'recording_id', 'release_group_id']].copy()
+        return torch_values(self._performances[['release_date', 'recording_id',]])
 
     def album_ids(self) -> torch.Tensor:
         if self._performances is None:
@@ -86,14 +91,6 @@ class CreateTensors:
     def test_mask(self) -> torch.Tensor:
         return self._mask_slices()[2]
 
-
-    def performances(self) -> torch.Tensor:
-        if self._performances is None:
-            self._performances = self.load_parquet('performance_nodes.parquet')
-            self._performances['release_date'] = self._performances.release_date.astype('datetime64[ms]').dt.year
-            self._performances = self._performances[['release_date', 'recording_id', 'release_group_id']].copy()
-        return torch_values(self._performances[['release_date', 'recording_id',]])
-
     def artist_song_edges(self) -> torch.Tensor:
         if getattr(self, '_song_artist_edges', None) is None:
             df = self.load_parquet('song_artist_edges.parquet')
@@ -137,15 +134,13 @@ def prune_isolated_nodes(data: HeteroData):
     # set the node data in out.
 
 def make_jazz_data(create: CreateTensors) -> HeteroData:
+    """Build graph data with limited node features.
+
+    This function was used extensively for training GNNs that worked primarily
+    on the topological features of the network. Classifier Models,
+    LinkPrediction models, and self-supervised GNNs without edge features.
+    """
     data = HeteroData()
-
-    def index_tensor(tensor):
-        """Return 0, 1, 2... for each value in tensor. (An index.)
-
-        When sampling graph nodes, we want a direct lookup of the node
-        ids.
-        """
-        return torch.arange(0, tensor.size(0), dtype=torch.int64).reshape(-1, 1)
 
     # This is a little clunky. The nodes are not expected to provide
     # substantial feature information--the information is the graph.
