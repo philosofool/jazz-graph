@@ -12,6 +12,7 @@ import psycopg
 
 from jazz_graph.etl.transforms import map_array
 from jazz_graph.etl.transforms import map_by_index
+from jazz_graph.training.logging import is_working_tree_dirty, is_current_commit_migrated, insert_current_migration
 
 
 class CreateNodeData:
@@ -106,12 +107,14 @@ def queries() -> SQL:
         performance_artist_sql = """
             SELECT DISTINCT  -- there are duplicates in recording_to_performer where a musican plays two instuments (Louis)
                 recording_to_performer.artist_id,
-                jazz_recordings.recording_id
+                jazz_recordings.recording_id,
+                recording_to_performer.instrument as instrument
             FROM
                 jazz_recordings
             JOIN
                 recording_to_performer ON jazz_recordings.recording_id = recording_to_performer.recording_id
-            WHERE jazz_recordings.release_date >= %(start)s
+            WHERE
+                jazz_recordings.release_date >= %(start)s
                 AND jazz_recordings.release_date < %(end)s
         """,
         song_artist_sql = """
@@ -134,15 +137,13 @@ def create_tables(start, end, directory):
     int64_col_unique = pandera.Column("int64", coerce=True, unique=True)
 
     artist_performance_schema = pandera.DataFrameSchema(
-        {'artist_id': int64_col, 'recording_id': int64_col},
-        # NOTE: this means that we reject artists playing multiple instruments in the same
-        # performance. May be undesirable if we add edge labels later.
-        unique=["artist_id", "recording_id"],
+        {'artist_id': int64_col, 'recording_id': int64_col, 'instrument': pandera.Column('str')},
+        unique=["artist_id", "recording_id", "instrument"],
         ordered=True
     )
     artist_song_schema = pandera.DataFrameSchema(
         {'artist_id': int64_col, 'work_id': int64_col},
-        # NOTE: we're primarily interestedin composers, not lyricists, but
+        # NOTE: we're primarily interested in composers, not lyricists, but
         # there's some duplication--I think because an arist composes and writes lyrics in
         # a song. Maybe relax this requirement later.
         unique=['artist_id', 'work_id'],
@@ -227,6 +228,7 @@ def _write_parquet(df, filename: str, directory: str):
     if not filename.endswith('.parquet'):
         filename = filename + '.parquet'
     path = os.path.join(directory, filename)
+    os.makedirs(directory, exist_ok=True)
     df.to_parquet(path, index=True)
     print(f"Wrote {df.shape[0]} rows, {df.shape[1]} columns to {path}.")
 
@@ -236,12 +238,22 @@ def _read_parquet(filename, directory) -> pd.DataFrame:
 
 
 if __name__ == '__main__':
-    os.makedirs('/workspace/local_data/graph_parquet', exist_ok=True)
-    os.makedirs('/workspace/local_data/graph_parquet_proto', exist_ok=True)
-    assert os.path.exists('/workspace/local_data/graph_parquet')
+    DEBUGGING = False
 
-    prototype_params = (pd.Timestamp('1957-01-01'), pd.Timestamp('1963-01-01'), '/workspace/local_data/graph_parquet_proto')
-    create_tables(*prototype_params)
+    if DEBUGGING == True:
+        print("Running in debugging mode.")
+        prototype_params = (pd.Timestamp('1957-01-01'), pd.Timestamp('1963-01-01'), '/workspace/local_data/graph_parquet_debugging')
+        create_tables(*prototype_params)
+    else:
+        if is_working_tree_dirty():
+            raise Exception("Stash or commit your changes before running.")
 
-    production_params = (pd.Timestamp('1900-01-01'), pd.Timestamp('2100-01-01'), '/workspace/local_data/graph_parquet')
-    create_tables(*production_params)
+        if is_current_commit_migrated(None, None):
+            print("No changes detected. Aborting.")
+        else:
+            prototype_params = (pd.Timestamp('1957-01-01'), pd.Timestamp('1963-01-01'), '/workspace/local_data/graph_parquet_proto')
+            create_tables(*prototype_params)
+
+            production_params = (pd.Timestamp('1900-01-01'), pd.Timestamp('2100-01-01'), '/workspace/local_data/graph_parquet')
+            create_tables(*production_params)
+            insert_current_migration(None, None)
