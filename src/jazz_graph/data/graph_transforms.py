@@ -27,8 +27,16 @@ def drop_edge_from_masks(src_graph, edge_masks, dst_graph):
     # but don't you could easily create an invalid graph from this.
     # Maybe just move to unsupervised...
     for edge_type, mask in edge_masks.items():
-        src_edge_index = src_graph[edge_type].edge_index
-        dst_graph[edge_type].edge_index = src_edge_index[:, mask]
+        for key, tensor in src_graph[edge_type].items():
+            if tensor.size(0) == mask.size(0):
+                new_tensor = tensor[mask]
+            elif tensor.dim() == 1:
+                # just add to destination:
+                new_tensor = tensor
+            elif tensor.size(1) == mask.size(0):
+                new_tensor = tensor[:, mask]
+            dst_graph[edge_type][key] = new_tensor
+
     return None
 
 
@@ -63,7 +71,7 @@ def prune_graph_from_masks(src_graph: HeteroData, masks: dict):
     # set the edge indexes in out.
     for src, relation, dst in edge_types:
         edge = src_graph[src, relation, dst]
-        # currently assumes edge_index is only edge property.
+
         src_indexes = edge.edge_index[0]
         dst_indexes = edge.edge_index[1]
         new_edge_index = torch.stack([
@@ -71,6 +79,9 @@ def prune_graph_from_masks(src_graph: HeteroData, masks: dict):
             map_to_new_node_index(dst_indexes, masks[dst])
         ])
         dst_graph[src, relation, dst].edge_index = new_edge_index
+        if hasattr(src_graph[src, relation, dst], 'edge_attr'):
+            dst_graph[src, relation, dst].edge_attr = src_graph[src, relation, dst].edge_attr
+
     return dst_graph
 
 

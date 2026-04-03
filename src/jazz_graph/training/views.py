@@ -64,7 +64,7 @@ def drop_edge_augmentation(graph: HeteroData, dst_graph, drop_edge_prob: float =
         edge_type: torch.rand(graph[edge_type].edge_index.size(1)) > drop_edge_prob
         for edge_type in edge_types
     }
-    return drop_edge_from_masks(graph, edge_masks, dst_graph)
+    drop_edge_from_masks(graph, edge_masks, dst_graph)
 
 
 def drop_random_nodes_and_edges(data: HeteroData, drop_edge_prob: float = .5):
