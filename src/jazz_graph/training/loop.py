@@ -214,7 +214,7 @@ class DualLossUnsupervisedTraining:
             for node_type in z1_dict_ablation
         }
 
-        total_loss = self.alpha * sum(losses_ablation.values()) / len(z1_dict_ablation) + (1 - self.alpha) * loss_album
+        total_loss = (1 - self.alpha) * sum(losses_ablation.values()) + self.alpha * loss_album
         total_loss.backward()  # pyright: ignore [reportAttributeAccessIssue]
         self.optimizer.step()
 
