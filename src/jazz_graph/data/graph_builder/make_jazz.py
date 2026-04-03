@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from torch_geometric.data import HeteroData
 from torch_geometric.transforms import ToUndirected
-from .legacy import prune_isolated_nodes, torch_values
+from jazz_graph.data.graph_builder.graph_builder import prune_isolated_nodes, torch_values
 
 
 class JazzDataStore:
@@ -39,7 +39,7 @@ class PerformanceFeatures:
     def base(self) -> torch.Tensor:
         df = self.data()
         df['release_date'] = df.release_date.astype('datetime64[ms]').dt.year
-        return torch.tensor(df[['release_date', 'recording_id']].to_numpy(), dtype=torch.float)
+        return torch.tensor(df[['release_date', 'recording_id']].to_numpy(), dtype=torch.int64)
 
     def style(self) -> torch.Tensor:
         df = self.data()
@@ -74,8 +74,8 @@ class EdgeFeatures:
         self.store = store
 
     def instruments(self) -> torch.Tensor:
-        data = self.store.load('artist_performance_edges.parquet').copy()
-        instruments = data['instruments']
+        data = self.store.load('performance_artist_edges.parquet').copy()
+        instruments = data['instrument']
         encoded_instruments = instruments.map(encode_instrument).to_numpy()
         return torch.tensor(encoded_instruments.reshape(-1, 1), dtype=torch.long)
 
@@ -101,7 +101,7 @@ def _make_jazz_graph(store: JazzDataStore, with_style, with_edges) -> HeteroData
     if with_style:
         data['performance'].style = perf.style()
     if with_edges:
-        data['artist', 'performs', 'performance'].edge_attrs = EdgeFeatures(store).instruments()
+        data['artist', 'performs', 'performance'].edge_attr = EdgeFeatures(store).instruments()
 
 
     data = prune_isolated_nodes(data)
@@ -127,8 +127,8 @@ def load_edge_data(store: JazzDataStore, edge_file: str, cols: list[str]) -> tor
 
 def _add_edge_indexes(data: HeteroData, store: JazzDataStore):
     """Add edge indexes to jazz data."""
-    artist_performance = load_edge_data(store, 'artist_performance_edges.parquet', ['artist_id', 'recording_id'])
-    artist_song = load_edge_data(store, 'artist_song_edges.parquet', ['artist_id', 'work_id'])
+    artist_performance = load_edge_data(store, 'performance_artist_edges.parquet', ['artist_id', 'recording_id'])
+    artist_song = load_edge_data(store, 'song_artist_edges.parquet', ['artist_id', 'work_id'])
     performance_song = load_edge_data(store, 'performance_song_edges.parquet', ['recording_id', 'work_id'])
 
     data['artist', 'composed', 'song'].edge_index = artist_song

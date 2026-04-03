@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import torch
-from jazz_graph.data.graph_builder import prune_isolated_nodes, torch_values, torch_index, CreateTensors
+from jazz_graph.data.graph_builder.graph_builder import prune_isolated_nodes, torch_values, torch_index, CreateTensors
 
 from jazz_graph.data.graph_transforms import map_to_new_node_index
 import pytest
