@@ -14,8 +14,6 @@ from typing import TYPE_CHECKING
 import torch
 
 if TYPE_CHECKING:
-    from torch_geometric.loader import LinkNeighborLoader
-    from ignite.engine import Engine
     from jazz_graph.model.model import NodeClassifier, LinkPredictionModel, JazzModel
 
 
@@ -211,43 +209,6 @@ class ExperimentLogger:
         checkpoint = torch.load(ckpt_path, map_location='cpu')
         return checkpoint
 
-
-## Handlers
-
-def run_evaluator_handler(trainer: Engine, evaluator: Engine, loader: LinkNeighborLoader):
-    evaluator.run(loader)
-
-def console_logging(evaluator: Engine, step_name: str, trainer: Engine):
-    metrics = evaluator.state.metrics
-    print(f"{step_name} - Epoch[{trainer.state.epoch:03}]")
-    for metric, value in metrics.items():
-        print(f"  Avg. {metric}: {value:.3f}", end='; ')
-    else:
-        print()
-
-def save_embeddings_handler(engine, logger: ExperimentLogger, model):
-    """Save embeddings at end of training."""
-    logger.save_embeddings(model)
-
-def save_checkpoint_handler(engine, logger: ExperimentLogger, model, optimizer):
-    """Save checkpoint at end of epoch."""
-    logger.save_checkpoint(
-        model,
-        optimizer=optimizer,
-        name="last.pt"
-    )
-
-
-def log_experiment_handler(engine, logger: ExperimentLogger, split, trainer: Engine):
-    """Log experiment results (usually each epoch) to files."""
-    metrics = engine.state.metrics
-    logger.log_metrics(trainer.state.epoch, metrics, split)
-
-def binary_output_transform(output: dict[str, torch.Tensor]) -> tuple:
-    """Return y_true and y_pred as binary classifications."""
-    y_pred = (output["y_pred"] > 0).long()
-    y_true = output["y_true"]
-    return y_pred, y_true
 
 ## VISUALIZATION of logs.
 
