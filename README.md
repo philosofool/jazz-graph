@@ -1,16 +1,26 @@
-*Jazz Graph*
+# JazzGraph
 
-_Jazz Graph_ is a recommender system for using expert judgment to make music recommendations. It uses the relationships of musical collaboration among jazz artists to encode similarity relations among performances and leverages those similarity relationships to make recommendations. The model of similarity is a graph neural network.
+_JazzGraph_ is a recommender system for using expert judgment to make music recommendations.
+It uses the relationships of musical collaboration among jazz artists to encode similarity relations among performances and leverages those similarity relationships to make recommendations.
+The model of similarity is a graph neural network.
 
 Think of JazzGraph as the following: rather than ask other music listeners what songs to listen to, ask Thelonious Monk.
 
-_Jazz Graph_ begins as the capstone project for my Master of Science in Data Science. Below, we outline the initial proposal for completing the capstone.
+_JazzGraph_ begins as the capstone project for my Master of Science in Data Science. Below, we outline the initial proposal for completing the capstone.
 
-**Concept**
+## Files
+
+[src/jazz-graph] python source code for project.
+[notebooks](/notebooks/) contains interactive examples and demonstrations.
+[queries](/queries/) contains database essentials.
+[resources](/resources/) text files linking to helpful resources related to recommendation systems, graph deep learning, and PyG (pytorch-geometric) for graph applications.
+
+
+## Concept
 
 Create a graph neural network to learn interesting features of jazz as represented in a graph of jazz artist collaborations, and provide some interesting application of the model or features that it learns.
 
-**Requirements**
+## Requirements
 
 There should be one pull-request for each of the following requirements. Some of them should be fairly simiple; (1), for example, is probably a single markdown file that describes the entities and relations in the data. I expect 2, 4 and 5 to moderate sized PRs.
 1. Create a data model expressive of collaboration in jazz; the model should be graph-like.
@@ -20,7 +30,7 @@ There should be one pull-request for each of the following requirements. Some of
 5. Complete some demonstration of the usefulness of the trained system.
 6. Include references where appropriate to existing examples and research.
 
-**Proposed implementation**
+## Proposed implementation
 
 I'm separating the requirements from this proposal so that the evalution criteria are clear even if the end results are different from this proposal; a proposal is a good way to show that something is feasible. The following would, I think, satisfy the requirements very well and I believe that this can be completed.
 
