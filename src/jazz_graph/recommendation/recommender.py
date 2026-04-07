@@ -136,7 +136,7 @@ class InferenceRecommender(Recommender):
     model, rather than cached embeddings, to make an inference. The beneift is
     (1) saving time, (2) debugging and (3) introspection.
     """
-    def __init__(self, model: JazzModel, data: HeteroData):
+    def __init__(self, model: JazzModel, data: HeteroData, pooling: str='sum'):
         self.model = model
         self.data = data
         self.lookup_recordings = LookupRecordings.from_hetero_data(data)
@@ -147,6 +147,18 @@ class InferenceRecommender(Recommender):
             # create this tensor and use it w/out modifying input data.
             if not hasattr(node, 'n_id'):
                 node.n_id = torch.arange(node.x.size(0))
+        self.pooling = pooling
+
+    def pool_scores(self, scores: torch.Tensor) -> torch.Tensor:
+        if self.pooling == 'sum':
+            return scores.sum(dim=-1)
+        if self.pooling == 'max':
+            out = scores.max(dim=-1).values
+            return out
+        if self.pooling == 'softmax':
+            weights = torch.softmax(scores, dim=-1)
+            return (weights * scores).sum(dim=-1)
+        raise ValueError("Unsupported pooling.")
 
     @torch.no_grad()
     def get_recommendations(self, listens: list[int]) -> Recommendations:
@@ -166,7 +178,7 @@ class InferenceRecommender(Recommender):
         familiar_perf = performance_embed[familiar_nodes]
         # novel_perf = performance_embed
         raw_scores = (performance_embed @ familiar_perf.T)
-        scores = raw_scores.sum(dim=-1)
+        scores = self.pool_scores(raw_scores)
 
         listens_mask = self.lookup_recordings.mask_data_listens(listens)
         rec_recordings, scores_sorted, sort_index = self._sort_scores(scores)

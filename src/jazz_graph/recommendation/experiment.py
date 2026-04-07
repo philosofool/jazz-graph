@@ -49,9 +49,10 @@ class BSideExperiment:
     Given an input of an artist-album pair and asplit of songs as seed inputs
     measure the number of remaining songs on the album being recommended.
     """
-    def __init__(self, recommender: Recommender, recording_traits: pd.DataFrame):
+    def __init__(self, recommender: Recommender, recording_traits: pd.DataFrame, log_dir: str):
         self.recommender = recommender
         self.recording_traits = recording_traits
+        self.log_dir = log_dir
 
     def _extract_recording_ids(self, artist, album) -> tuple:
         album_recordings = self.recording_traits.query(f"artist == '{artist}'").query(f"album == '{album}'").index.to_numpy()
@@ -84,7 +85,7 @@ class BSideExperiment:
         recommended given only the A-side as inputs. This experiment simulates that
         as a basic sanity check for the recommender.
         """
-        experiment_log = ExperimentLogger(root='../experiments', run_name='recommendations', config=experiment_config)
+        experiment_log = ExperimentLogger(root=self.log_dir, run_name='bside_experiment', config=experiment_config)
         results = []
         for artist, album in album_experiments:
             result = self.b_side_precision(artist, album)
@@ -94,8 +95,9 @@ class BSideExperiment:
 
 
 class SpotifyExperiement:
-    def __init__(self, recording_traits: pd.DataFrame, listening_history: list[dict], seed=None):
+    def __init__(self, recording_traits: pd.DataFrame, listening_history: list[dict], log_dir: str, seed=None):
         self.listening_history = listening_history
+        self.log_dir = log_dir
         self.spotify = SpotifyListens(recording_traits)
         self.album_split = RandomAlbumSplit(seed=seed)
         self.album_split.make_splits(self.spotify.get_listen_data(listening_history))
@@ -121,7 +123,7 @@ class SpotifyExperiement:
         return np.array(self.album_split.recordings_b)
 
     def _make_logger(self, experiment_config):
-        self._experiment_log = ExperimentLogger(root='../experiments', run_name='spotify_recommendations', config=experiment_config)
+        self._experiment_log = ExperimentLogger(root=self.log_dir, run_name='spotify_recommendations', config=experiment_config)
 
     def log_experiment(self, experiment_config, metrics):
         if not hasattr(self, '_experiment_log'):
@@ -162,10 +164,10 @@ class SpotifyExperiement:
             'recall_tp': float(novel_tp.size),
             'known_tp': float(familiar_tp.size),
             'samples': {
-                f'top_{n}_novel_recommendations': positives_novel.tolist(),
+                f'top_novel_recommendations': positives_novel.tolist(),
                 'true_positive_in_novel_recommendation': novel_tp.tolist(),
                 'false_negative_in_novel_sample': novel_fn.tolist(),
-                f'top_{n}_familiar_recommendations': positives_familiar.tolist(),
+                f'top_familiar_recommendations': positives_familiar.tolist(),
                 'true_positive_in_familiar_recommendation': familiar_tp.tolist(),
                 'false_negative_in_familiar_sample': familiar_fn.tolist(),
             }
