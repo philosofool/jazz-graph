@@ -185,7 +185,7 @@ if __name__ == '__main__':
     else:
         experiment_config = {
             'graph_data_function': graph_data_function.__name__,
-            'training_task': 'dual_loss',  # 'edge_ablation' or 'match_album'
+            'training_task': 'edge_ablation',  # 'edge_ablation' or 'match_album'
             'random_seed': random_seed,
             'data_config': {
                 'dataset': graph_data_file,
@@ -258,16 +258,18 @@ if __name__ == '__main__':
     )
 
     # intialize model weights if lazy loading.
-    model(next(iter(train_loader)))
-    model.to(device)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=experiment_config['lr'])
 
     if run_to_load:
         checkpoint = experiment_logger.load_checkpoint()
         model.load_state_dict(checkpoint['model_state_dict'])
+        model.to(device)
+        optimizer = torch.optim.Adam(model.parameters(), lr=experiment_config['lr'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-
+    else:
+        model(next(iter(train_loader)))
+        model.to(device)
+        optimizer = torch.optim.Adam(model.parameters(), lr=experiment_config['lr'])
 
     # trainer = make_album_match_trainer(model, optimizer, experiment_logger)
     # trainer = make_album_match_trainer(model, optimizer, experiment_logger)
@@ -288,4 +290,4 @@ if __name__ == '__main__':
         lambda engine: train_loader.set_epoch(engine.state.epoch)
     )
 
-    trainer.run(train_loader, max_epochs=10)
+    trainer.run(train_loader, max_epochs=5)

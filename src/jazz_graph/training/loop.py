@@ -345,8 +345,9 @@ def console_logging_self_supervised(evaluator: Engine, step_name: str, trainer: 
         if 'song' in key:
             return 2
         return 3
-    value = metrics.pop('total_loss')
-    print(f"  Avg. total loss: {value:.3f}")
+    if 'total_loss' in metrics:
+        value = metrics.pop('total_loss')
+        print(f"  Avg. total loss: {value:.3f}")
     metrics = sorted(metrics.items(),  key=lambda x: order_keys(x[0]))
     for i, (metric, value) in enumerate(metrics):
         if i % 4 == 0 and i != 0:
