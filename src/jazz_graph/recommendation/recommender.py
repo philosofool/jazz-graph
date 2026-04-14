@@ -284,7 +284,7 @@ class RandomWalkRecommender(Recommender):
 
     Used as a baseline model for making recommendations.
     """
-    def __init__(self, data: HeteroData, seed: int|None):
+    def __init__(self, data: HeteroData, seed: int | None):
         self.data = data
         self.node_type = 'performance'
         self.lookup_recordings = LookupRecordings.from_hetero_data(data)

@@ -168,15 +168,18 @@ class UnsupervisedJazzModel(nn.Module):
             return {tuple(e[0]): e[1] for e in value}
 
         if JazzModelClass is JazzModelWithStylesAndEdges:
-            projection_dim  = model_config.pop('style_projection_dim')
-            model_config['projection_dim'] = projection_dim
+            projection_dim = model_config['projection_dim']
+            model_projection_dim  = model_config.pop('style_projection_dim')
+            model_config['projection_dim'] = model_projection_dim
             model_config['edge_dim'] = extract_edge_dim(model_config['edge_dim'])
+        else:
+            projection_dim = model_config.pop('projection_dim')
         return cls(
             JazzModelClass(
                 **model_config
             ),
             embeddings_dim=model_config['hidden_dim'],
-            projection_dim=model_config['projection_dim']
+            projection_dim=projection_dim
         )
 
     @classmethod

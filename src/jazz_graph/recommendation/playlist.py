@@ -52,8 +52,11 @@ class SpotifyListens:
     def _yield_spotify_matches(self, spotify_data: list[dict], unique, invert) -> Iterable[tuple[dict, int]]:
         seen = set()
         for record in spotify_data:
-            spot_id = record['spotify_track_uri']
+            spot_id = record.get('spotify_track_uri')
             if unique and spot_id in seen:
+                continue
+            if spot_id is None:
+
                 continue
             seen.add(spot_id)
             recording_id = self.get_recording_id(record)

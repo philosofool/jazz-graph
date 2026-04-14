@@ -228,7 +228,6 @@ class DualLossUnsupervisedTraining:
                 'z2': z2_dict_ablation[node_type].detach()
             }
 
-
         results = {
             'total_loss': total_loss.item(),
             'album': {'performance': {'loss': loss_album.item(), 'z1': z1_dict_album['performance'].detach(), 'mask': matching_album_mask}},

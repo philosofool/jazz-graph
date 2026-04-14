@@ -171,7 +171,7 @@ if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    run_to_load: str|None = None
+    run_to_load: str | None = None
 
     if run_to_load:
         assert ' ' not in run_to_load, "Expected no spaces."
@@ -185,7 +185,7 @@ if __name__ == '__main__':
     else:
         experiment_config = {
             'graph_data_function': graph_data_function.__name__,
-            'training_task': 'edge_ablation',  # 'edge_ablation' or 'match_album'
+            'training_task': 'match_album',  # 'edge_ablation' or 'match_album'
             'random_seed': random_seed,
             'data_config': {
                 'dataset': graph_data_file,
@@ -212,14 +212,14 @@ if __name__ == '__main__':
                 'model_type': ['sage', 'gatv2', 'sage', 'sage', 'gatv2', 'sage'],
                 'num_layers': 3,
             },
-            'drop_edge_prob': .2,
+            'drop_edge_prob': None,
             'dataset': graph_data_file,
             'lr': .001,
             'batch_size': 128,
-            'temperature': .25,
-            'alpha': .5,
+            'temperature': .30,
+            'alpha': .8,
         }
-        print(f"Initializing new model with configuration:\n")
+        print("Initializing new model with configuration:\n")
         pprint.pprint(experiment_config)
         experiment_logger = ExperimentLogger(root='/workspace/experiments', run_name=f'gnn_simCLR_{os.path.basename(graph_data_file)}', config=experiment_config)
 
@@ -257,9 +257,6 @@ if __name__ == '__main__':
         batch_size=experiment_config['batch_size'],
     )
 
-    # intialize model weights if lazy loading.
-
-
     if run_to_load:
         checkpoint = experiment_logger.load_checkpoint()
         model.load_state_dict(checkpoint['model_state_dict'])
@@ -267,13 +264,13 @@ if __name__ == '__main__':
         optimizer = torch.optim.Adam(model.parameters(), lr=experiment_config['lr'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     else:
+        # intialize model weights if lazy loading.
         model(next(iter(train_loader)))
         model.to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=experiment_config['lr'])
 
     # trainer = make_album_match_trainer(model, optimizer, experiment_logger)
     # trainer = make_album_match_trainer(model, optimizer, experiment_logger)
-
 
     if experiment_config['training_task'] == 'edge_ablation':
         trainer = make_trainer(model, optimizer, experiment_logger)
@@ -290,4 +287,4 @@ if __name__ == '__main__':
         lambda engine: train_loader.set_epoch(engine.state.epoch)
     )
 
-    trainer.run(train_loader, max_epochs=5)
+    trainer.run(train_loader, max_epochs=12)
