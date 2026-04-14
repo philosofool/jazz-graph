@@ -2,7 +2,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 import pandas as pd
 import numpy as np
-
+import warnings
 import random
 
 from typing import TYPE_CHECKING
@@ -54,8 +54,13 @@ class BSideExperiment:
         self.recording_traits = recording_traits
         self.log_dir = log_dir
 
+    def get_recording_data(self, artist: str, album: str) -> pd.DataFrame:
+        df = self.recording_traits.query(f"artist == '{artist}'").query(f"album == '{album}'")
+        expected_date = df['release_date'].min()
+        return df[df['release_date'] == expected_date]
+
     def _extract_recording_ids(self, artist, album) -> tuple:
-        album_recordings = self.recording_traits.query(f"artist == '{artist}'").query(f"album == '{album}'").index.to_numpy()
+        album_recordings = self.get_recording_data(artist, album).index.to_numpy()
         assert len(album_recordings) > 1, f"Unable to identify mulitple recordings with {artist}, {album}"
         n_inputs = len(album_recordings) // 2
         input_ids = album_recordings[:n_inputs]
@@ -75,7 +80,7 @@ class BSideExperiment:
             'n_inputs': len(input_ids),
             'n_expected_recs': len(expected_recs),
             'k': k,
-            f'MAP_at_k': float(map_k),
+            'MAP_at_k': float(map_k),
             'recommended_ids': recs.tolist()[:k]}
 
     def b_side_experiment(self, experiment_config: dict, album_experiments: list[tuple[str, str]]):
@@ -107,9 +112,9 @@ class SpotifyExperiement:
     #     recording_traits = LookupRecordings.from_hetero_data(graph_data)
     #     return cls(recording_traits, listening_history)
 
-    def run_experiment(self, recommender: Recommender, experiment_config):
+    def run_experiment(self, recommender: Recommender, experiment_config, k=2):
         recommendations, scores, mask = recommender.get_recommendations(self.in_samples)
-        metrics = self.experiment_metrics(recommendations, mask)
+        metrics = self.experiment_metrics(recommendations, mask, k)
         self.log_experiment(experiment_config, metrics)
 
     @property
@@ -136,41 +141,77 @@ class SpotifyExperiement:
         experiment_log = self._experiment_log
         experiment_log.log_metrics(None, metrics, "spotify_recommendations")
 
-    def experiment_metrics(self, recommendations, mask):
+    def recall(self, relevant, positives):
+        tp = np.intersect1d(relevant, positives)
+        fn = np.setdiff1d(relevant, tp)
+        recall = tp.size / (tp.size + fn.size)
+        return tp, fn, recall
+
+    def coverage(self, positives, seeded):
+        """Return the coverage of artists in data.
+
+        This is a diversity metric. If the model finds a large number of artists
+        outside the seed values, this suggests that the model produces diverse
+        recommendations.
+        """
+        novel_recs = np.setdiff1d(positives, seeded)
+        artist_of_novel_recs = self.spotify.recording_traits.loc[novel_recs].artist
+        seeded_artists = self.spotify.recording_traits.loc[seeded].artist
+        # unique_novel = artist_of_novel_recs.unique()
+        familiar_artists = seeded_artists.unique()  # NOTE: these can't overlap with unique novel--they must be familiar artists.
+        novel_artist_names = np.setdiff1d(artist_of_novel_recs, familiar_artists)
+        novel_artist_performances = artist_of_novel_recs[artist_of_novel_recs.isin(novel_artist_names)]
+        return {
+            'artist_counts': novel_artist_performances.value_counts(normalize=True).to_dict(),
+            'novel_frequency': novel_artist_names.size / (novel_artist_names.size + familiar_artists.size)}
+
+    def experiment_metrics(self, recommendations, mask, k):
         # We are mainly interested in recall of out-of-sample splits from the album spliter.
         # Recall of albums from the in-sample cases are less interesting, since no matter
         # how the model scores those, we can always filter--the familiar candiates are availbale
         # at inference time.
         in_samples = self.in_samples
         out_samples = self.out_samples
-        novel_recommendations = recommendations[~mask]
-        familiar_recommendations = recommendations[mask]
+        # unseeded_recommendations = recommendations[~mask]
+        # seeded_recommendations = recommendations[mask]
 
-        n = max(20, out_samples.size * 2)
-        positives_novel = novel_recommendations[:n]
-        positives_familiar = familiar_recommendations[:n]
+        # n = max(20, np.sum(mask) * k)
+        # if n > len(recommendations) / 2:
+        #     warnings.warn(f"Value set for k is examining recall for below top half recommendatsions (k={k})")
+        n = len(recommendations) // 5
+        positives_unseeded = recommendations[:n][~mask[:n]]
+        positives_seeded = recommendations[:n][mask[:n]]
+        negatives = recommendations[n:]
+        # negatives_unseeded = recommendations[n:][~mask[n:]]
+        # negatives_seeded = recommendations[n:][mask[n:]]
 
-        novel_tp = np.intersect1d(novel_recommendations, out_samples)
-        familiar_tp = np.intersect1d(familiar_recommendations, in_samples)
-        novel_fn = np.setdiff1d(out_samples, novel_tp)
-        familiar_fn = np.setdiff1d(in_samples, familiar_tp)
+        novel_tp = np.intersect1d(positives_unseeded, out_samples)
+        familiar_tp = np.intersect1d(positives_seeded, in_samples)
+        novel_fn = np.intersect1d(negatives, out_samples)
+        familiar_fn = np.intersect1d(negatives, in_samples)
 
         recall_novel = novel_tp.size / (novel_tp.size + novel_fn.size)
         recall_familiar = familiar_tp.size / (familiar_tp.size + familiar_fn.size)
+
+        seeded_coverage = self.coverage(recommendations[:n], self.in_samples)
+        unseeded_coverage = self.coverage(recommendations[:n], self.out_samples)
 
         metrics = {
             'recall_novel': float(recall_novel),
             'recall_familiar': float(recall_familiar),
             'recall_tp': float(novel_tp.size),
             'known_tp': float(familiar_tp.size),
+            'n': int(n),
+            'n_over_n_performances': float(n / len(recommendations)),
             'samples': {
-                f'top_novel_recommendations': positives_novel.tolist(),
+                'top_novel_recommendations': positives_unseeded.tolist(),
                 'true_positive_in_novel_recommendation': novel_tp.tolist(),
                 'false_negative_in_novel_sample': novel_fn.tolist(),
-                f'top_familiar_recommendations': positives_familiar.tolist(),
+                'top_familiar_recommendations': positives_seeded.tolist(),
                 'true_positive_in_familiar_recommendation': familiar_tp.tolist(),
                 'false_negative_in_familiar_sample': familiar_fn.tolist(),
-            }
-
+            },
+            'unseeded_coverage': unseeded_coverage,
+            'seeded_coverage': seeded_coverage
         }
         return metrics
