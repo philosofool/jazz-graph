@@ -2,7 +2,6 @@ from __future__ import annotations
 from collections.abc import Iterable
 import pandas as pd
 import numpy as np
-import warnings
 import random
 
 from typing import TYPE_CHECKING
@@ -11,11 +10,11 @@ from jazz_graph.recommendation.playlist import SpotifyListens
 from jazz_graph.metrics.ranking import map_at_k
 
 if TYPE_CHECKING:
-    from jazz_graph.recommendation.recommender import Recommender, LookupRecordings
+    from jazz_graph.recommendation.recommender import Recommender
 
 
 class RandomAlbumSplit:
-    def __init__(self, frac: float = .5, seed: int|None = None):
+    def __init__(self, frac: float = .5, seed: int | None = None):
         self.frac = frac
         self.split_a = set()
         self.split_b = set()
@@ -113,7 +112,7 @@ class SpotifyExperiement:
     #     return cls(recording_traits, listening_history)
 
     def run_experiment(self, recommender: Recommender, experiment_config, k=2):
-        recommendations, scores, mask = recommender.get_recommendations(self.in_samples)
+        recommendations, scores, mask = recommender.get_recommendations(self.in_samples)    # pyright: ignore [reportArgumentType]
         metrics = self.experiment_metrics(recommendations, mask, k)
         self.log_experiment(experiment_config, metrics)
 
