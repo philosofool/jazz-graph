@@ -44,7 +44,7 @@ Despite the simplicity of the plan, there were a number of iterations on this pr
 
 ### Summarize
 
-What the hell remains? How many nodes? How many edges? Etc.
+What the remains? How many nodes? How many edges? Etc.
 
 Features? (Maybe just discuss features with training, since you mostl)
 
@@ -61,22 +61,45 @@ iv. Combinations of effects: where a node is duplicated, a portion of relevant e
 
 ### GNN Approaches and Challenges
 
-* GNN approaches.
-* SimCLR
 
-### Training
+There are a number of models for GNN learning. The basic approach of all GNNs is to characterize graph nodes with their feature information; the feature information can be features from the data, learned features (i.e, embeddings) or a combination of these. The process of learning about the graph involves learning a representation of a node with its neighborhood. For example, the GraphSAGE algorithm learns a representation $h_1$ of a nodes neighborhood by transforming the feature representation of a node and it's neighbors with a learned transformation and then aggregating these to a representation of the node's neighborhood. Through additional layers, a representaiton of a node, its neighbors, and it's neighbors' neighbors can be learned. Roughly:
+$$h_{x1} = agg(W_1.x_i)$$
+where $W_1$ is the learned weight matrix, $N_x$ is the set of nodes that are neighbors of $x$, adn $agg$ is an aggregation function, such as summation. In more sophistocated models, the aggregation can be informed by features of edges, which (of course) determine which nodes are connected to $x_i$.
 
-Graph sampling. Jitter Year.
+The goal of the Graph Neural Network (GNN) is to learn representations of musical performances from the graph of collaboration.
+The representations will be used in the downstream recommendation task. Thus, it is necessary to find a task for learning representations which generates a useful concept of similarity. Following standard deep learning practice, all the approaches for this I considered involved learning an embedding to capture the latent space which characterizes the features for learning.
 
-### Recommendation
+There are many options for such a task, though the available data limits what might be done. Task are naturally divided into two classes, supervised and unsupervised (or self-supervised) models.
+
+One feature available for supervised learning is the jazz substyle information in the graph. Each performance has a multilabel feature corresponding to the jazz sub-style(s) it exemplifies. One advantage of using this data is that music style presumably directly correlates to listener preferences, so that a listen who likes a lot of bebop would presumbaly like other songs which are also bepop. With this in mind, the first version of the model that I built learned embeddings to classify performances according to style. This model did poorly in the B-side experiment task (see below.) There are a few likely reasons why this model did not succeed. First is that the loss function did not constrain the node embeddings into a space where the dot product or cosine similarity represented degree of similarity between two performances. Second, the style information itself seems incomplete (many performances have no substyle.) Finally, the styles maybe too coarse to learn embeddings the helpfully differentiate in a spectrum of similarity. In the future work section below, I suggest addition ways the label information might be used to learn, directly, when two performances are similar.
+
+Many recommendations systems use graphs, which are a natural extension of matrix factorizations problems in collaborative filtering. In those problems, an item and query have an edge between them if an appropriate interaction exists. For example, in movie recommendation, a user and a movie might be linked if the user gave the movie a positive review. In the graph context, the probability of a link between an item and query can be used to order items for recommendation. With this in mind, I also tried some link prediction tasks; two performances are similar if they share similar probability distributions over actual and hypothetical links. I invetigated two potential link prediction tasks; first, performance-artist links, second, performance-album links. in both cases, the model also did poorly on the B-side exerperiment and recommendation task. But, the model was exceptionally good at finding the links. Indeed, that I spent a fair amount of time confirming that there was not leakage to the dev set because perfect prediction is often a symptom of leakage rather than model quality. Leakage is a common problem in link prediction learning for graphs beacuse information can "sneak" along edges in subtle ways, including reverse edges of undirected graphs. Leakage was not the sources of the problem--the issue appears to be that certain links are just too easy to predict with enough information. (A common feature of our jazz graph is that two performances on the same album will share exactly the same artists, making the artists in one performance exceptional signal about the artists in another. Random samples of negative edges must be carried out very carefully to make the task informative enough to be challenging.) The combination of high performance on these training tasks but low performance on the downstream recommendation metrics suggests that the task is inappropraite to learning useful embeddings.
+
+A self-supervised task for graph learning is also promising. In self-supervized learning tasks, a model is required to predict the graph structure itself. This is similar to token prediction tasks used to learn embeddings for words. For practical reasons, mostly relating to the code already engineered for the two supervised learning tasks, I decided to use a version of SimCLR for self-supervised learning. SimCLR was originally applied to image learning. A SimCLR model involves learning are representaiton h of an entity one seeks to represent and a represntation z used for the training task. The training task in SimCLR involves created two augmented views of each sample and then learning to identify (1) which samples are augmentations of the same entity and (2) to spread the representations of different entities uniformly in the embedding space.
+
+I tried two different augmentation approaches. First, an edge ablation task where random edges are removed from the graph. Second, a shared album task where two performances should have similar representations if they are on the same album. In some ways, these are similar to the edge prediction task. However, they add a component of contrasitve learning. (EXPAND?)
+
+Self-supervised learning resulted in performance embeddings that succeeded in the recommendation task, both for B-side and Spotify recommendations.
+
+### Training and Model Architecture
+
+In order to train on a large graph, it is necessary to sample the graph. Sampling is accomplished by ordering the nodes in a batch and then completing a random walk of constrained depth around each node in the batch. Initial attempts for random odering of nodes resulted in no learning, however, this was traced back to extreme sparsity in the sampled graphs--placing recordings from the 1940 and 2020s in the same sample meant almost no relevant connection between nodes. A simple solution to this problems to add a jitter to the release year for each node at the start of each epoch and then order by this jittered year. This eliminated the sparsity problem and models were able to successfully learn from the jittered samples.
+
+The minimum layer depth for learning from jazz collaborations is 2. Each performance node should learn not only from the features of artist who played on them but also from that artists performance neighborhood. In the collaboration graph, there are no direct performance-performance edges: to reach one performance from another, it is necesssary to pass through an artist or song node. To reach a performance node from a perfromance node while moving through a song node we also need two hops. I selected a layer depth of three, allowing a more rich collection of graph information to reach each performance representation. I did not perform experiements to verify this decision, which remains for future work.
+
+Models were trained without any informative features ("no feature models") and with two potentially important available features, the substyle information and an edge feature representing the instrument played ("with features.") In the no feature models each layer was a GraphSAGE convoluation with 64 dimensional outputs. In the feature models, an attentional layer was used since SAGE models don't natively support edge features. Adding features to the model provided a significant boost to performance.
+
+## Recommendation
 
 Given an input model, how do we turn model outputs into a recommendation?
+
+
 Also, two baselines.
 
 ## Evaluation and Results
 
 What are the procedures for evaluation? Why use those?
 
-T
+Provide a table of results for the baselines and the models that were trained
 
 ## Future Projects
