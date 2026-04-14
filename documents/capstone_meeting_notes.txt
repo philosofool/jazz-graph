@@ -24,9 +24,67 @@ TO DO this week:
 
 
 Continue
-[x] First releases
+[x] First releases: rework data to limit to the first releases.
 [x] Improve features on performances: add date data (get first release dates)
 [] Normalize instrument data, slim to 10-20 important instruments, include "Other".
 [x] Subset that data for prototyping. I slimmed the data to six years of jazz around 1960.
-[] Write PyG dataset for the data.
+[x] Write PyG dataset for the data.
+[x] Write a first-pass GNN that does predictions on the data.
+- I wrote an style prediction GNN
 [] Plan of the dev/train/test set.
+
+TODO:
+[] Drop island nodes.
+[] Clean genres.
+[x] Graph Recommenders: https://arxiv.org/abs/2105.06339  This was not a helpful article.
+[] Data set for the recommendation problem.
+[] Weights and Biases [experiment tracking/HP tuning.]
+
+Notes on progress. I slightly adjusted the modeling choice and get somewhat improved
+results on the model. Either there's leakage in the edge prediciton model or the
+signal is insanely good--I'm getting basically perfect scores.
+It's at least possible that this is a problem with the task:
+suppose you know the pianist, bassist and drummer
+in a quartet--any suggested edge with an artist who plays in one of those roles is
+probably incorrect. Even without edge labels, this is likely to be something a model
+can learn about artists. So, the task looks a little easy.
+
+The issue of finding a recommendation data set is still complicated.
+
+Next Steps:
+- Use your own data from spotify for evaluating the recommder. Or find a substitue.
+https://github.com/KID-22/Awesome-Music-Recommendation-Datasets?tab=readme-ov-file
+- Build out he rec-sys.
+
+26 Feb. 2026:
+I have generated recommendations based on my own spotify listens.
+The good news is that we have end-to-end recommendations running!
+The bad news is that inspection doesn't reveal anything useful about the recs.
+Charlie Parker's Fiesta was the top song that I could find on Spotify
+(two prior examples were not in their catelog.) It's no surprise that
+I liked it. However, Freddie Hubbard's "Arietis" was in the bottom 20 of
+10,000+ recommendations. I love that song and any system which would rank
+a 1962 Freddie Hubbard performance so low is not making suitable distinctions.
+(Arietis is more my thing than Fiesta.)
+Nevertheless: we have end-to-end recommendations.
+[x] Next step: add some logging for recommendations; consider sanity checks.
+
+For the recommendation santity check, I wrote a "B-side" precision test.
+I logged the results for several albums using the base model of the classifier.
+The results are 0.0 everywhere! It does count as a bug test:
+the precision for seen albums tends to be high, so that's a positive sign that
+at least there's no alignment level bug. I should still write those tests.
+
+Quetsions, things to discuss:
+- train/test splits
+- leakage?
+- ...
+
+3 March
+
+Ooof. Rough week on the sanity front. I worked out recommenders, but they don't work.
+The embeddings that are learned aren't tracking performance similarity of the
+right sort. I'm going to try to do a 'same album' link between performances
+and train on that: if two performances are on the same album, they should be similar.
+The converse--if two songs are similar, they are on the same album--isn't true, so
+we shall see.

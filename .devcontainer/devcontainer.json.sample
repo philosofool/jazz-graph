@@ -1,0 +1,47 @@
+// Sample dev container file.
+// Copy this to 'devcontainer.json' and it should configure your local
+// dev container environment for pytorch development.
+{
+  "name": "python-gpu-torch-env",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "remoteEnv": {
+    "PGHOST": "host.docker.internal",
+    "PGPORT": "5432",
+    "PGDATABASE": "musicbrainz_db",
+    "PGUSER": "philosofool",
+    //update password et al. as necessary.
+    "PGPASSWORD": "*****",
+    "PGSSLMODE": "disable",
+    "PGOPTIONS": "-c search_path=musicbrainz"
+  },
+  "workspaceFolder": "/workspace",
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached"
+  ],
+  "remoteUser": "vscode",
+  // Swap these to enable/disable GPUs if they are available on your host machine.
+  // "runArgs": [
+  //  "--add-host=host.docker.internal:host-gateway"
+  // ],
+  "runArgs": [
+    "--add-host=host.docker.internal:host-gateway", "--gpus", "all"
+  ],
+  "postCreateCommand": "pip install --upgrade pip  && pip install -e .",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/opt/conda/bin/python",
+        "python.analysis.autoImportCompletions": true,
+        "python.analysis.typeCheckingMode": "basic"
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-toolsai.jupyter"
+      ]
+    }
+  }
+}

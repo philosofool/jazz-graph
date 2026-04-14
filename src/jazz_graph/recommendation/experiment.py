@@ -1,0 +1,216 @@
+from __future__ import annotations
+from collections.abc import Iterable
+import pandas as pd
+import numpy as np
+import random
+
+from typing import TYPE_CHECKING
+from jazz_graph.training.logging import ExperimentLogger
+from jazz_graph.recommendation.playlist import SpotifyListens
+from jazz_graph.metrics.ranking import map_at_k
+
+if TYPE_CHECKING:
+    from jazz_graph.recommendation.recommender import Recommender
+
+
+class RandomAlbumSplit:
+    def __init__(self, frac: float = .5, seed: int | None = None):
+        self.frac = frac
+        self.split_a = set()
+        self.split_b = set()
+        self.recordings_a = []
+        self.recordings_b = []
+        self._rng = random.Random(seed)
+
+    def make_splits(self, data: Iterable):
+        for record in data:
+            self.add_to_splits(record)
+
+    def add_to_splits(self, record):
+        album = record.release_group_id
+        recording_id = record.Index
+        if album in self.split_a:
+            self.recordings_a.append(recording_id)
+        elif album in self.split_b:
+            self.recordings_b.append(recording_id)
+        else:
+            if self._rng.random() > self.frac:
+                self.recordings_a.append(recording_id)
+                self.split_a.add(album)
+            else:
+                self.recordings_b.append(recording_id)
+                self.split_b.add(album)
+
+
+class BSideExperiment:
+    """Do a b-side experiment.
+
+    Given an input of an artist-album pair and asplit of songs as seed inputs
+    measure the number of remaining songs on the album being recommended.
+    """
+    def __init__(self, recommender: Recommender, recording_traits: pd.DataFrame, log_dir: str):
+        self.recommender = recommender
+        self.recording_traits = recording_traits
+        self.log_dir = log_dir
+
+    def get_recording_data(self, artist: str, album: str) -> pd.DataFrame:
+        df = self.recording_traits.query(f"artist == '{artist}'").query(f"album == '{album}'")
+        expected_date = df['release_date'].min()
+        return df[df['release_date'] == expected_date]
+
+    def _extract_recording_ids(self, artist, album) -> tuple:
+        album_recordings = self.get_recording_data(artist, album).index.to_numpy()
+        assert len(album_recordings) > 1, f"Unable to identify mulitple recordings with {artist}, {album}"
+        n_inputs = len(album_recordings) // 2
+        input_ids = album_recordings[:n_inputs]
+        expected_recs = album_recordings[n_inputs:]
+        return input_ids, expected_recs
+
+    def b_side_precision(self, artist: str, album: str):
+        """Do a b-side experiment for the input artist's album."""
+        input_ids, expected_recs = self._extract_recording_ids(artist, album)
+        k = len(expected_recs) + 20
+        recs, _, mask = self.recommender.get_recommendations(input_ids.tolist())
+        recs = recs[~mask]
+        map_k = map_at_k(recs, expected_recs, k)
+        return {
+            'artist': artist,
+            'album': album,
+            'n_inputs': len(input_ids),
+            'n_expected_recs': len(expected_recs),
+            'k': k,
+            'MAP_at_k': float(map_k),
+            'recommended_ids': recs.tolist()[:k]}
+
+    def b_side_experiment(self, experiment_config: dict, album_experiments: list[tuple[str, str]]):
+        """Perform a b-side experiment for each artist-album pair.
+
+        The second side of a record, also known as the 'B-side' should probably be
+        recommended given only the A-side as inputs. This experiment simulates that
+        as a basic sanity check for the recommender.
+        """
+        experiment_log = ExperimentLogger(root=self.log_dir, run_name='bside_experiment', config=experiment_config)
+        results = []
+        for artist, album in album_experiments:
+            result = self.b_side_precision(artist, album)
+            experiment_log.log_metrics(None, result, "b_side_experiment")
+            results.append(result)
+        return results
+
+
+class SpotifyExperiement:
+    def __init__(self, recording_traits: pd.DataFrame, listening_history: list[dict], log_dir: str, seed=None):
+        self.listening_history = listening_history
+        self.log_dir = log_dir
+        self.spotify = SpotifyListens(recording_traits)
+        self.album_split = RandomAlbumSplit(seed=seed)
+        self.album_split.make_splits(self.spotify.get_listen_data(listening_history))
+
+    # @classmethod
+    # def from_graph_data(cls, graph_data: HeteroData, listening_history):
+    #     recording_traits = LookupRecordings.from_hetero_data(graph_data)
+    #     return cls(recording_traits, listening_history)
+
+    def run_experiment(self, recommender: Recommender, experiment_config, k=2):
+        recommendations, scores, mask = recommender.get_recommendations(self.in_samples)    # pyright: ignore [reportArgumentType]
+        metrics = self.experiment_metrics(recommendations, mask, k)
+        self.log_experiment(experiment_config, metrics)
+
+    @property
+    def in_samples(self) -> np.ndarray:
+        """One side of the experiment split, used for recommender seeding."""
+        return np.array(self.album_split.recordings_a)
+
+    @property
+    def out_samples(self) -> np.ndarray:
+        """The complement of in_samples, used for experiment metrics."""
+        return np.array(self.album_split.recordings_b)
+
+    def _make_logger(self, experiment_config):
+        self._experiment_log = ExperimentLogger(root=self.log_dir, run_name='spotify_recommendations', config=experiment_config)
+
+    def log_experiment(self, experiment_config, metrics):
+        if not hasattr(self, '_experiment_log'):
+            self._make_logger(experiment_config)
+        else:
+            config = self._experiment_log.config()
+            config.pop('commit')    # pyright: ignore [reportOptionalMemberAccess]  <- None should never happen here, so fail if it does, but not typing error.
+            if experiment_config != config:
+                self._make_logger(experiment_config)
+        experiment_log = self._experiment_log
+        experiment_log.log_metrics(None, metrics, "spotify_recommendations")
+
+    def recall(self, relevant, positives):
+        tp = np.intersect1d(relevant, positives)
+        fn = np.setdiff1d(relevant, tp)
+        recall = tp.size / (tp.size + fn.size)
+        return tp, fn, recall
+
+    def coverage(self, positives, seeded):
+        """Return the coverage of artists in data.
+
+        This is a diversity metric. If the model finds a large number of artists
+        outside the seed values, this suggests that the model produces diverse
+        recommendations.
+        """
+        novel_recs = np.setdiff1d(positives, seeded)
+        artist_of_novel_recs = self.spotify.recording_traits.loc[novel_recs].artist
+        seeded_artists = self.spotify.recording_traits.loc[seeded].artist
+        # unique_novel = artist_of_novel_recs.unique()
+        familiar_artists = seeded_artists.unique()  # NOTE: these can't overlap with unique novel--they must be familiar artists.
+        novel_artist_names = np.setdiff1d(artist_of_novel_recs, familiar_artists)
+        novel_artist_performances = artist_of_novel_recs[artist_of_novel_recs.isin(novel_artist_names)]
+        return {
+            'artist_counts': novel_artist_performances.value_counts(normalize=True).to_dict(),
+            'novel_frequency': novel_artist_names.size / (novel_artist_names.size + familiar_artists.size)}
+
+    def experiment_metrics(self, recommendations, mask, k):
+        # We are mainly interested in recall of out-of-sample splits from the album spliter.
+        # Recall of albums from the in-sample cases are less interesting, since no matter
+        # how the model scores those, we can always filter--the familiar candiates are availbale
+        # at inference time.
+        in_samples = self.in_samples
+        out_samples = self.out_samples
+        # unseeded_recommendations = recommendations[~mask]
+        # seeded_recommendations = recommendations[mask]
+
+        # n = max(20, np.sum(mask) * k)
+        # if n > len(recommendations) / 2:
+        #     warnings.warn(f"Value set for k is examining recall for below top half recommendatsions (k={k})")
+        n = len(recommendations) // 5
+        positives_unseeded = recommendations[:n][~mask[:n]]
+        positives_seeded = recommendations[:n][mask[:n]]
+        negatives = recommendations[n:]
+        # negatives_unseeded = recommendations[n:][~mask[n:]]
+        # negatives_seeded = recommendations[n:][mask[n:]]
+
+        novel_tp = np.intersect1d(positives_unseeded, out_samples)
+        familiar_tp = np.intersect1d(positives_seeded, in_samples)
+        novel_fn = np.intersect1d(negatives, out_samples)
+        familiar_fn = np.intersect1d(negatives, in_samples)
+
+        recall_novel = novel_tp.size / (novel_tp.size + novel_fn.size)
+        recall_familiar = familiar_tp.size / (familiar_tp.size + familiar_fn.size)
+
+        seeded_coverage = self.coverage(recommendations[:n], self.in_samples)
+        unseeded_coverage = self.coverage(recommendations[:n], self.out_samples)
+
+        metrics = {
+            'recall_novel': float(recall_novel),
+            'recall_familiar': float(recall_familiar),
+            'recall_tp': float(novel_tp.size),
+            'known_tp': float(familiar_tp.size),
+            'n': int(n),
+            'n_over_n_performances': float(n / len(recommendations)),
+            'samples': {
+                'top_novel_recommendations': positives_unseeded.tolist(),
+                'true_positive_in_novel_recommendation': novel_tp.tolist(),
+                'false_negative_in_novel_sample': novel_fn.tolist(),
+                'top_familiar_recommendations': positives_seeded.tolist(),
+                'true_positive_in_familiar_recommendation': familiar_tp.tolist(),
+                'false_negative_in_familiar_sample': familiar_fn.tolist(),
+            },
+            'unseeded_coverage': unseeded_coverage,
+            'seeded_coverage': seeded_coverage
+        }
+        return metrics

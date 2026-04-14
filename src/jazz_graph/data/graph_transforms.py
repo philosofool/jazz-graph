@@ -1,0 +1,99 @@
+
+from collections.abc import Hashable
+import torch
+from torch_geometric.data import HeteroData
+from torch_geometric.utils import degree
+
+
+def extend_graph(data: HeteroData, new_nodes: dict[str, dict[Hashable, torch.Tensor]], new_edge_index: dict[str, dict[Hashable, torch.Tensor]]):
+    data = data.clone()
+    for node_type, feature_dict in new_nodes.items():
+        node_data = data[node_type]
+        for feature, new_data in feature_dict.items():
+            node_data[feature] = torch.concat([node_data[feature], new_data])
+
+    for edge_type, feature_dict in new_edge_index.items():
+        assert edge_type in data.metadata()[1]
+        edge_data = data[edge_type]
+        for feature, new_data in feature_dict.items():
+            edge_data[feature] = torch.concat([edge_data[feature], new_data], dim=1)
+    data.validate()
+    return data
+
+
+def drop_edge_from_masks(src_graph, edge_masks, dst_graph):
+    # This is a weird function. I see the value in augmenting data,
+    # but it's somewhat awkward--specify the result from a source
+    # but don't you could easily create an invalid graph from this.
+    # Maybe just move to unsupervised...
+    for edge_type, mask in edge_masks.items():
+        for key, tensor in src_graph[edge_type].items():
+            if tensor.size(0) == mask.size(0):
+                new_tensor = tensor[mask]
+            elif tensor.dim() == 1:
+                # just add to destination:
+                new_tensor = tensor
+            elif tensor.size(1) == mask.size(0):
+                new_tensor = tensor[:, mask]
+            dst_graph[edge_type][key] = new_tensor
+
+    return None
+
+
+def map_to_new_node_index(edge_index, node_mask: torch.Tensor) -> torch.Tensor:
+    """Remap the values in edge index to point to values in a new tensor
+    that contains only values the nodes in nodes mask.
+    """
+    new_node_index = node_mask.to(torch.int64)
+    new_node_index[0] = new_node_index[0] - 1
+    new_node_index = torch.cumsum(new_node_index, dim=0)
+    edges_to_keep = node_mask[edge_index]
+    new_edge = new_node_index[edge_index]
+    return new_edge[edges_to_keep]
+
+
+def prune_graph_from_masks(src_graph: HeteroData, masks: dict):
+    """Prune the graph to contain only selected nodes corresponding edges, returning new data."""
+    dst_graph = HeteroData()
+    node_types, edge_types = src_graph.metadata()
+    for node_type in node_types:
+        node_data = src_graph[node_type]
+        for key, tensor in node_data.items():
+            mask = masks[node_type]
+            if key == 'input_id':
+                # I don't love this, but input_id in a batch is length batch size...
+                tensor = tensor[mask[:tensor.size(0)]]
+            elif key == 'batch_size':
+                continue
+            else:
+                tensor = tensor[mask]
+            dst_graph[node_type][key] = tensor
+    # set the edge indexes in out.
+    for src, relation, dst in edge_types:
+        edge = src_graph[src, relation, dst]
+
+        src_indexes = edge.edge_index[0]
+        dst_indexes = edge.edge_index[1]
+        new_edge_index = torch.stack([
+            map_to_new_node_index(src_indexes, masks[src]),
+            map_to_new_node_index(dst_indexes, masks[dst])
+        ])
+        dst_graph[src, relation, dst].edge_index = new_edge_index
+        if hasattr(src_graph[src, relation, dst], 'edge_attr'):
+            dst_graph[src, relation, dst].edge_attr = src_graph[src, relation, dst].edge_attr
+
+    return dst_graph
+
+
+def mask_node_degree(data: HeteroData, min_degree=1):
+    node_types, edge_types = data.metadata()
+    seen_relations = set()
+    total_degrees = {node_type: torch.zeros(data[node_type].num_nodes, dtype=torch.bool) for node_type in node_types}
+    for edge_type in edge_types:
+        src, _, dst = edge_type
+        edge = data[edge_type].edge_index
+        n_src_nodes = data[src].num_nodes
+        total_degrees[src] = total_degrees[src] + degree(edge[0], num_nodes=n_src_nodes)
+        n_dst_nodes = data[dst].num_nodes
+        total_degrees[dst] = total_degrees[dst] + degree(edge[1], num_nodes=n_dst_nodes)
+    return {k: v >= min_degree for k, v in total_degrees.items()}
