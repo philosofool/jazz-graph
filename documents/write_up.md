@@ -1,5 +1,6 @@
 # Jazz Graph
 
+TODO: REmove these notes about what to add.
 1. Visualize the graph in places.
 2. Flow chart (System overview)
 3. Results table.
@@ -39,6 +40,8 @@ We model jazz collaboration as a heterogenous graph. Within the graph, there are
 
 * Relations
 * Features
+
+![data_model](documents/poster_graph.png)
 
 ### Data Sources
 
