@@ -1,5 +1,10 @@
 # Jazz Graph
 
+1. Visualize the graph in places.
+2. Flow chart (System overview)
+3. Results table.
+4. Data tables (nodes etc.)
+
 ## System Architecture
 
 ![System Diagram](documents/system_diagram.png)
@@ -17,6 +22,7 @@ Jazz thus forms an elaborate social network and readily represnted as a graph. A
 The aim to produce a recommender system based on jazz collaboration differs form many recommender system approaches in some ways.
 1. The system uses features of the subject matter to produce representations of similarity that may be used for recommendation.
 1. Music and other enteratinment content, in particular, have often relied on systems of aggregating knowledge and preference from human users to make recommendations. For example, collaborative filltering is often a matrix favorization problem where user-item interactions are the modeled data. In such a context, user-item interaction are either (1) a proxy for the domain features or (2) considered the primary target of represention. With 1, knowledge about musical similarity is assumed to be captured in user-item interactions. With 2, musiscal similarity is beside the point--the goal is learning something which represents something else, such as probabilities of user engagement. (We do not wish to overstate the reliance on user-item iteractions. It is well known that large enterainment services incorporate diverse sources of data in their recommender systems.)
+
 JazzGraph takes a slightly different approach. It assumes that the subject domain contains sufficiently rich information that similarity can be encoded by learning from the domain's structure alone. In short, it assumes that a graph of artists, songs and performances is sufficiently rich that it is possible to learn representation of the domain sufficient to generate informed recommendations. In this regard, it is arguably more like human cognition regarding musical recommendation than collaborative filtering: human experts know the music and recommend music based on musical features; they don't (or many would be ashamed to admit to) making recommendations simply based on popularity and other's taste.
 (Again, we should not exaggerate the point: knoweldge of who plays with whom is not the same as knowing a song. Nevertheless, it is knowledge of the subject domain, rather than (for example) user perferences. Another perspective on the present work is as an investigation of whether domain knowledge encoded in user preferences aligns with domain knowledge encoded in collaboration.)
 
@@ -40,9 +46,9 @@ To complete the project, it was necessary to extract the data about jazz collabo
 
 Musicbrainz is a large public SQL database of musical recordings. It contains detailed information, including songs and performers, for many of the recordings in the catalog. It lacks two keys components needed for this project. A concept of a master recording or release that organizes re-released recordings under a single parent. (As an example, recordings released on CD in the 1980s and a vinyl release of the same from the 1950s to not share a single parent id.) Additionally, Musicbrainz does not have style or genre information which isolates jazz recordings from other genres. Musicbrainz is a publicly maintained database and therefore contains inconsistencies that result from imperfect governance of the data.
 
-Discogs is makes available an XML files of its data. There are two XML files in Discogs of interest for this project. First, the releases table in Discogs includes the a parent object which duplicate releases share. Second, it contains data on releases themselves, including artist, trakclistings, and genres. Discogs does not have the two major weaknesses of Musicbrainz.  However, the data is not organized into relational tables. Thus, performers associated with a recording are not linked to a table with unique entries for each artist; instead, a release will indicate who played on it with string data. This means that it is difficult to reliably build performance edges for the graph.
+Discogs is makes available XML files of its data. There are two XML files in Discogs of interest for this project. First, the releases table in Discogs includes the a parent object which duplicate releases share. Second, it contains data on releases themselves, including artist, trakclistings, and genres. Discogs does not have the two major weaknesses of Musicbrainz.  However, the data is not organized into relational tables. Thus, performers associated with a recording are not linked to a table with unique entries for each artist; instead, a release will indicate who played on it with string data. This means that it is difficult to reliably build performance edges for the graph.
 
-To build the graph of jazz collaboration, we thus need to merge these two data sources by fuzzy matching on strings. In summary, this means identifying Discogs jazz master recordings and matching the earliest release in Musicbrainz with the same album title and artist name. This allows one to construct a table of jazz recordings in Musicbrainz and then use that database to construct the performing and performs edges.
+To build the graph of jazz collaboration, we thus need to merge these two data sources by fuzzy matching on artist and title strings. In summary, this means identifying Discogs jazz master recordings and matching the earliest release in Musicbrainz with the same album title and artist name. This allows one to construct a table of jazz recordings in Musicbrainz and then use that database to construct the performing and performs edges.
 
 ### Process
 
@@ -99,15 +105,164 @@ Models were trained without any informative features ("no feature models") and w
 
 ## Recommendation
 
-Given an input model, how do we turn model outputs into a recommendation?
+Recommenders need to translate a collection of seed value into a collection of scored recommendations.
 
+A recommender finds the dot product off all known performances with the embeddings of the seed performances, creating an n x m matrix, n = number of known recordings, m = number of seed recommendations. Each row, then, represents a single recording and it's similarity to all seed listing values. A score for each recording is generated by aggregating these scores.
+
+I experimented with three different aggregation functions, sum, max and softmax. Summation weights all performances in the seed value equally; conceptually, this can be seen as promoting recommendations which are like the mean seed. To clarify this effect, imagine that the embedding primarily characterize whether a song is bebop or modal jazz; then, if 80% of all seeds are bebop, we would expect bepob performances to score highly while model performances score weakly, since the model performances will be similar to only 20% of seeds and each seed is equally weight. Max aggregation promotes performances which are highly similar to exactly one seed value. Conceptually, if some performances are avant-guard and avant-gaurd performances are highly similar to one another whie others are hard bop and hard bop performances tend to be just somewhat similar to one another, max aggregation will have tendency to promote avant-guard recordings even if only a small proportion of seeds are avant-gaurd. Softmax aggregation takes each row of per-seed scores and weights it by the softmax of the row and then sums the score. The effect is upsignaling performances that are highly similar to some seed value, and this may be seen as balancing the tendencies of max and sum aggregation.
+
+Given an input model, how do we turn model outputs into a recommendation?
 
 Also, two baselines.
 
 ## Evaluation and Results
 
+We evaluate the quality of the recommendations by relevance and diversity. There is direct measure for a self-supervised task to assess whether it generates relevant recommendations. As a proxy, I used my own Spotify listening history. First, we split the listening history by album so that performances on an album are split between two sets. The reason for album spliting is straightforward: given that two songs are on the same album, it is almost trivial to know that I should recommend any unseeded performances that share an album with a seeded performance. The task is significantly more challenging if the system needs to understand that performance from different albums, which are more likely to be disjoint in some features, are similar.
+
 What are the procedures for evaluation? Why use those?
 
 Provide a table of results for the baselines and the models that were trained
+
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>model</th>
+      <th>pooling</th>
+      <th>novel_recall</th>
+      <th>familiar_recall</th>
+      <th>coverage</th>
+      <th>BSide_mean_MAP_at_k</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>7</th>
+      <td>match_album_no_features</td>
+      <td>max</td>
+      <td>0.173428</td>
+      <td>1.000000</td>
+      <td>0.835570</td>
+      <td>0.345939</td>
+    </tr>
+    <tr>
+      <th>12</th>
+      <td>RandomWalkRecommender</td>
+      <td>---</td>
+      <td>0.194444</td>
+      <td>0.202899</td>
+      <td>0.523611</td>
+      <td>0.132113</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>edge_ablation_with_features</td>
+      <td>max</td>
+      <td>0.239351</td>
+      <td>1.000000</td>
+      <td>0.917030</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <th>0</th>
+      <td>dual_loss_with_features</td>
+      <td>sum</td>
+      <td>0.276876</td>
+      <td>0.328924</td>
+      <td>0.806652</td>
+      <td>0.822443</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>dual_loss_with_features</td>
+      <td>softmax</td>
+      <td>0.276876</td>
+      <td>0.318342</td>
+      <td>0.807520</td>
+      <td>0.822443</td>
+    </tr>
+    <tr>
+      <th>6</th>
+      <td>match_album_no_features</td>
+      <td>sum</td>
+      <td>0.278905</td>
+      <td>0.378307</td>
+      <td>0.850870</td>
+      <td>0.434394</td>
+    </tr>
+    <tr>
+      <th>10</th>
+      <td>match_album_with_features</td>
+      <td>max</td>
+      <td>0.295132</td>
+      <td>1.000000</td>
+      <td>0.829692</td>
+      <td>0.523511</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>dual_loss_with_features</td>
+      <td>max</td>
+      <td>0.297160</td>
+      <td>1.000000</td>
+      <td>0.840242</td>
+      <td>0.839110</td>
+    </tr>
+    <tr>
+      <th>8</th>
+      <td>match_album_no_features</td>
+      <td>softmax</td>
+      <td>0.314402</td>
+      <td>0.395062</td>
+      <td>0.840242</td>
+      <td>0.411335</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>edge_ablation_with_features</td>
+      <td>sum</td>
+      <td>0.314402</td>
+      <td>0.365961</td>
+      <td>0.910978</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <th>5</th>
+      <td>edge_ablation_with_features</td>
+      <td>softmax</td>
+      <td>0.323529</td>
+      <td>0.393298</td>
+      <td>0.910840</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <th>13</th>
+      <td>ArtistWeightedRecommender</td>
+      <td>---</td>
+      <td>0.420455</td>
+      <td>0.405125</td>
+      <td>0.011527</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <th>9</th>
+      <td>match_album_with_features</td>
+      <td>sum</td>
+      <td>0.485801</td>
+      <td>0.544092</td>
+      <td>0.805335</td>
+      <td>0.548604</td>
+    </tr>
+    <tr>
+      <th>11</th>
+      <td>match_album_with_features</td>
+      <td>softmax</td>
+      <td>0.518256</td>
+      <td>0.608466</td>
+      <td>0.804558</td>
+      <td>0.548604</td>
+    </tr>
+  </tbody>
+</table>
 
 ## Future Projects
