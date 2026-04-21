@@ -1,20 +1,14 @@
 # Jazz Graph
 
-TODO: REmove these notes about what to add.
-1. Visualize the graph in places.
-2. Flow chart (System overview)
-3. Results table.
-4. Data tables (nodes etc.)
-
 ## System Architecture
 
 ![System Diagram](/documents/system_diagram.png)
 
-The JazzGraph system includes a data pipeline (left), machine learning system (middle) and a recommendation system (right side). The ML system provides embeddings representing the similarity of jazz musical performances. The recommender uses these embeddings to generate recommendations.
+The JazzGraph system includes a data pipeline (left), machine learning system (middle) and a recommendation system (right side). The pipeline builds a graph from two public data sources. The ML system provides embeddings representing the similarity of jazz musical performances. The recommender uses these embeddings to generate recommendations.
 
 ## Jazz Collaboration for Recommendation
 
-This project leverages collaboration with in jazz musical works to create a recommendation system. The main goals of the project are (1) to establish a large corpus of data about jazz music and collect that data in a graph format, (2) to develop a graph neural network that learns representation of jazz performances and (3) to evaluate a recommendation system which uses those representations to make recommendations.
+This project leverages collaboration with in jazz musical works to create a recommendation system. The main goals of the project are (1) to establish a large corpus of data about jazz music and collect that data in a graph format, (2) to develop a graph neural network that learns representation of jazz performances and (3) to build and evaluate a recommendation system which uses those representations to make recommendations.
 
 Jazz music is highly collaborative. Jazz musicians collaborate directly when performing songs. Indirectly, jazz musicians play songs written by other jazz musicians. It is not an exaggeration to say that the most famous musicians in jazz from the 1950s and 1960s all played together at one time or another. It is fair to say the one could learn about new jazz simply starting with "Kind of Blue," the most famous and best selling jazz album of all time, and pick any artist on it to find another album of jazz. It is also not an exaggeration to say the most famous jazz songs have all been played by the most famous jazz musicians, often several times. Jazz performances involve rearrangement, improvisation, and substantial novelty as well. Many famous jazz performances, such as John Coltrane's "My Favorite Things" are stylistic reimaginings of the originals.
 
@@ -131,12 +125,12 @@ iv. Combinations of effects: where a node is duplicated, a portion of relevant e
 ### GNN Approaches and Challenges
 
 
-There are a number of models for GNN learning. The basic approach of all GNNs is to characterize graph nodes with their feature information; the feature information can be features from the data, learned features (i.e. embeddings) or a combination of these. The process of learning about the graph involves learning a representation of a node with its neighborhood. For example, the GraphSAGE algorithm learns a representation $h_1$ of a nodes neighborhood by transforming the feature representation of a node and it's neighbors with a learned transformation and then aggregating these to a representation of the node's neighborhood. Through additional layers, a representation of a node, its neighbors, and it's neighbors' neighbors can be learned. Roughly:
-$$h_{x} = agg(W_1x_i)$$
-where $W_1$ is the learned weight matrix, $N_x$ is the set of nodes that are neighbors of $x$, and $agg$ is an aggregation function, such as summation. In more sophisticated models, the aggregation can be informed by features of edges, which (of course) determine which nodes are connected to $x_i$.
+There are a number of models for GNN learning. The basic approach of all GNNs is to characterize graph nodes with their feature information; the feature information can be features from the data, learned features (i.e. embeddings) or a combination of these. The process of learning about the graph involves learning a representation of a node with its neighborhood. For example, the GraphSAGE algorithm learns a representation $h_1$ of a node's neighborhood by transforming the feature representation of a node and it's neighbors with a learned transformation and then aggregating these to a representation of the node's neighborhood. Through additional layers, a representation of a node, its neighbors, and it's neighbors' neighbors can be learned. Roughly:
+$$h_{x_i} = agg(W_1x_j, \forall x_j \in N_x)$$
+where $h_{x_i}$ is the representation of node $x_i$, $W_1$ is the learned weight matrix, $N_x$ is the set of nodes that are neighbors of $x$, and $agg$ is an aggregation function, such as summation. In more sophisticated models, the aggregation can be informed by features of edges, which (of course) determine which nodes are connected to $x_i$.
 
 The goal of the Graph Neural Network (GNN) is to learn representations of musical performances from the graph of collaboration.
-The representations will be used in the downstream recommendation task. Thus, it is necessary to find a task for learning representations which generates a useful concept of similarity. Following standard deep learning practice, all the approaches for this I considered involved learning an embedding to capture the latent space which characterizes the features for learning.
+The representations will be used in the downstream recommendation task. Thus, it is necessary to find a task for learning representations which generates a useful concept of similarity. Following standard deep learning practice, all the approaches for this I considered involved learning an embedding to capture the latent space which characterizes the features for learning; the expectation is the the dot product of two embeddings is larger when similarity is greater.
 
 There are many options for such a task, though the available data limits what might be done. Task are naturally divided into two classes, supervised and unsupervised (or self-supervised) models.
 
@@ -144,15 +138,15 @@ One label available for supervised learning is the jazz substyle information in 
 
 Many recommendations systems use graphs, which are a natural extension of matrix factorizations problems in collaborative filtering. In those problems, an item and query have an edge between them if an appropriate interaction exists. For example, in movie recommendation, a user and a movie might be linked if the user gave the movie a positive review. In the graph context, the probability of a link between an item and query can be used to order items for recommendation. With this in mind, I also tried some link prediction tasks; two performances are similar if they share similar probability distributions over actual and hypothetical links. I investigated two potential link prediction tasks; first, performance-artist links, second, performance-album links. in both cases, the model also did poorly on the B-side experiment and recommendation task. But, the model was exceptionally good at finding the links. Indeed, that I spent a fair amount of time confirming that there was not leakage to the dev set because perfect prediction is often a symptom of leakage rather than model quality. Leakage is a common problem in link prediction learning for graphs because information can "sneak" along edges in subtle ways, including reverse edges of undirected graphs. Leakage was not the sources of the problem--the issue appears to be that certain links are just too easy to predict with enough information. (A common feature of our jazz graph is that two performances on the same album will share exactly the same artists, making the artists in one performance exceptional signal about the artists in another. Random samples of negative edges must be carried out very carefully to make the task informative enough to be challenging.) The combination of high performance on these training tasks but low performance on the downstream recommendation metrics suggests that the task is inappropriate to learning useful embeddings.
 
-A self-supervised task for graph learning is also promising. In self-supervised learning tasks, a model is required to predict the graph structure itself. This is similar to token prediction tasks used to learn embeddings for words. For practical reasons, mostly relating to the code already engineered for the two supervised learning tasks, I decided to use a version of SimCLR for self-supervised learning. SimCLR was originally applied to image learning. A SimCLR model involves learning are representation h of an entity one seeks to represent and a representation z used for the training task. The training task in SimCLR involves created two augmented views of each sample and then learning to identify (1) which samples are augmentations of the same entity and (2) to spread the representations of different entities uniformly in the embedding space.
+A self-supervised task for graph learning is also promising. In self-supervised learning tasks, a model is required to predict the graph structure itself. This is similar to token prediction tasks used to learn embeddings for words. For practical reasons, mostly relating to the code already engineered for the two supervised learning tasks, I decided to use a version of SimCLR for self-supervised learning. SimCLR was originally applied to image learning. A SimCLR model involves learning are representation $h$ of an entity one seeks to represent and a representation $z$ used for the training task. The training task in SimCLR involves created two augmented views of each sample and then learning to identify (1) which samples are augmentations of the same entity and (2) to spread the representations of different entities uniformly in the embedding space.
 
-I tried two different augmentation approaches. First, an edge ablation task where random edges are removed from the graph. Second, a shared album task where two performances should have similar representations if they are on the same album. In some ways, these are similar to the edge prediction task. However, they add a component of contrastive learning. (EXPAND?)
+I tried two different augmentation approaches. First, an edge ablation task where random edges are removed from the graph. Second, a shared album task where two performances should have similar representations if they are on the same album. I discuss these tasks more in the training section below.
 
-Self-supervised learning resulted in performance embeddings that succeeded in the recommendation task, both for B-side and Spotify recommendations.
+Self-supervised learning resulted in performance embeddings that outperformed baselines in the recommendation task.
 
 ### Training and Model Architecture
 
-In order to train on a large graph, it is necessary to sample the graph. Sampling is accomplished by ordering the nodes in a batch and then completing a random walk of constrained depth around each node in the batch. Initial attempts for random ordering of nodes resulted in no learning, however, this was traced back to extreme sparsity in the sampled graphs--placing recordings from the 1940 and 2020s in the same sample meant almost no relevant connection between nodes. A simple solution to this problems to add a jitter to the release year for each node at the start of each epoch and then order by this jittered year. This eliminated the sparsity problem and models were able to successfully learn from the jittered samples.
+In order to train on a large graph, it is necessary to sample the graph. Sampling is accomplished by ordering the nodes in a batch and then completing a random walk of constrained depth around each node in the batch. Initial attempts for random ordering of nodes resulted in no learning, however, this was traced back to extreme sparsity in the sampled graphs--placing recordings from the 1940 and 2020s in the same sample meant almost no relevant connection between nodes. A simple solution to this problem was to add a jitter to the release year for each node at the start of each epoch and then order by this jittered year; I chose a uniform random jitter of +/-4 years. This eliminated the sparsity problem and models were able to successfully learn from the jittered samples.
 
 The minimum layer depth for learning from jazz collaborations is 2. Each performance node should learn not only from the features of artist who played on them but also from that artist's performance neighborhood. In the collaboration graph, there are no direct performance-performance edges: to reach one performance from another, it is necessary to pass through an artist or song node. To reach a performance node from a performance node while moving through a song node we also need two hops. I selected a layer depth of three, allowing a more rich collection of graph information to reach each performance representation. I did not perform experiments to verify this decision.
 
@@ -168,7 +162,7 @@ Summary of Features:
 
 Appendix A contains a descriptions of features and their distributions.
 
-There were three approaches to training the SimCLR model, each corresponding to a different augmentation approach. First, I attempted edge ablation; each edge in the graph had a 20% chance of removal and the model needs to recognize that two differently augmented nodes are the same. Second, the augmentation is to map performances of the same album to each other, which is a more directly semantic model of the nodes' similarity. (This perhaps stretches the concept of an augmentation, but the training process is essentially the same.) Finally, I tried a dual loss approach which required the model to do both tasks and applied a weighted loss. 
+I tried three tasks for training the SimCLR model, corresponding to different augmentation approaches. First, I attempted edge ablation; each edge in the graph had a 20% chance of removal and the model needs to recognize that two differently augmented nodes are the same. Second, the augmentation is to map performances of the same album to each other, which is a more directly semantic model of the nodes' similarity. (This perhaps stretches the concept of an augmentation, but the training process is essentially the same.) Finally, I tried a dual loss approach which required the model to do both tasks and applied a weighted loss.
 
 ## Recommendation
 
@@ -178,13 +172,13 @@ The recommenders using the GNN representations compute the dot product of all pe
 
 I experimented with three different aggregation functions: sum, max and softmax. Summation weights all performances in the seed value equally; conceptually, this can be seen as promoting recommendations which are like the majority of seeds. To clarify this effect, imagine that the embedding primarily characterize whether a song is bebop or modal jazz; then, if 80% of all seeds are bebop, we would expect bepob performances to score highly while model performances score weakly, since the model performances will be similar to only 20% of seeds and each seed is equally weighted. Max aggregation promotes performances which are highly similar to exactly one seed value. Conceptually, if some performances are avant-guard and avant-garde performances are highly similar to one another while others are hard bop and hard bop performances tend to be just somewhat similar to one another, max aggregation will have tendency to promote avant-garde recordings even if only a small proportion of seeds are avant-garde. Softmax aggregation takes each row of per-seed scores and weights it by the softmax of the row and then sums the score. The effect is up signaling performances that are highly similar to some seed value, and this may be seen as balancing the tendencies of max and sum aggregation.
 
-In addition to the GNN base models, I wrote two baseline systems for comparison. The random walk baseline takes a seed recommendation and does a two-hop walk for the seed performance to a performer of the seed to a performance from that performer. This is repeated 10 times for each seed. It represents a simple graph traversal for finding quality recommendations which any trained model should be able to beat. The artist weighted recommender assumes that every performance by a seed artist is relevant and scores all performances as the relative frequency of the artist in data. 
+In addition to the GNN base models, I wrote two baseline systems for comparison. The random walk baseline takes a seed recommendation and does a two-hop walk for the seed performance to a performer of the seed to a performance from that performer. This is repeated 10 times for each seed. It represents a simple graph traversal for finding quality recommendations which any trained model should be able to beat. The artist weighted recommender assumes that every performance by a seed artist is relevant and scores all performances as the relative frequency of the artist in data.
 
 ## Evaluation and Results
 
 I constructed three measures of recommendation quality: novel recall, novelty, and a b-side experiment.
 
-The first two use a listener's Spotify history to generate recommendations and then examine the qualities of the recommedations. Publically available, granular data representing user engagement with music is scarces. As a proxy for a broader listening histories, I used my own Spotify listening history. I split the listening history into seed and holdout sets. Performances are split randomly by album, so that when two performances appear on the same album, they are in the same split. The reason for album splitting is that if two songs are on the same album, it is almost trivial to know that I should recommend any unseeded performances that share an album with a seeded performance. The task is significantly more challenging if the system needs to understand that performance from different albums, which are more likely to be disjoint in some features, are similar. 
+The first two use a listener's Spotify history to generate recommendations and then examine the qualities of the recommedations. Publically available, granular data representing user engagement with music is scarces. As a proxy for a broader listening histories, I used my own Spotify listening history. I split the listening history into seed and holdout sets. Performances are split randomly by album, so that when two performances appear on the same album, they are in the same split. The reason for album splitting is that if two songs are on the same album, it is almost trivial to know that I should recommend any unseeded performances that share an album with a seeded performance. The task is significantly more challenging if the system needs to understand that performance from different albums, which are more likely to be disjoint in some features, are similar.
 
 Novel recall is top-K recall on the heldout performances and is a measure of the relevance of the recommendations. We set K to a top 20% of ranked recommendations. Recall is an appropriate metric for this system. It measures the system's ability to detect relevance while not penalizing the system for indicating relevance outside the listener's history. Strong recall on heldout data suggests high relevance in the collection of recommendations, which is our target.  I also provide the familiar recall for all models, which indicates recall of seed performances in the top-K.
 
@@ -209,21 +203,53 @@ A third metric is the "B-side experiment." The b-side experiment splits performa
 | Random Walk Baseline    | ---               | ---       |       0.194 |          0.202       |  0.523  |              0.132 |
 | Artist Weighted Baseline | ---              | ---       |       0.420 |          0.405       |  0.011  |              0        |
 
+### Qualitative Assessment
+
+Qualitative assessment provides an important source of information about the recommendations. Using the successful softmax, match album model above, I assessed the quality of recommendations (1) on my total listening history, (2) on a specific small sample of albums I like and (3) a single performance ("Isotope") which is in small sample. The small sample was also used for the subgraph of the data above.
+
+Performances used in the
+
+In all of these, I focused on whether the model delivered recommendations that align with the musical preferences that are expressed by the sample, as I understand that. As part of this, I listened to novel performances in the recommendations as well as assessing familiar recordings in the recommendations.
+
+It's worth noting that, as a jazz fan, it's more or less expected that I like this music.
+
+The results tend to cluster albums, though not perfectly. This is to be expected, given the training process. Song is not much of a signal in these (if it were, we would expect more shuffling between perfromance on different albums.) It's interesting that I seemed to like the results more as the number of seed values went down. That suggests a hypothesis: the recommender does better with singular signals than blended ones.
+
+#### 1. Total Album Assessment
+
+This is a hard set to evaluate since it's essentially an unweighted matching of all the songs I listen to that are jazz. Some of the seeds are probably songs I listened to more four years ago than today. The theme to me is "very standard hard bop." If there were an easy way to test that Herbie Hancock is the dominant thread in this, I would test that. Anyway, the feel all aligns with a subset of jazz that I listen to; the jazz that it does align with is not very like the small sample jazz that I provided, and that suggests to me that it is maybe a little too much like the median performance of jazz than like my personal preferences. In this case, it might have been good to select one performance per recommended album because it's hard to tell from he top albums selected what signal is propagating (but that remains for future work.)
+
+Grade: B-. Needs to cover more styles of jazz; it's pretty obviously late 50's Miles Davis, early 60's Herbie Hancock, Thelonius Monk, and similar. Not as eclectic as my overall preferences.
+
+#### 2. Small Sample Assessment
+
+The recommendations here seemed to align well with the input values. Several are clear examples of hard bop, which align well with the Oliver Nelson seeds and (to a lesser extent) the Joe Henderson seed. "Max Roach, His Chorus and Orchestra" appeared in this; it's somewhat surprising because it includes a vocal chorus (no seed does) and is a larger ensemble than others in this selection. The alignment here is insteresting because I loved the music but it was pretty unexpected given that it's not directly connected to any performance in the seeds. Whether that's an indication of randomness or finding deeper connection is an open question. There's a lot of Joe Henderson in the examples, suggesting that he is a strong signal. The included performances all range from 1959 to 1970, which makes a lot of sense from these seeds. Wes Montgomery recordings in the set feel misplaced; guitar and flute jazz that feels a little like Sonny Rollins to me is a little out of sync with these recordings.
+
+Grade: B. I really like the music, but I don't see connections and some of it is stylistically a departure from the seeds.
+
+#### 3. Single Performance Assessment
+
+The single performance I selected was Joe Henderson's "Isotope" from his album "Inner Urge." Henderson was a tenor saxophonist and the performance includes pianist McCoy Tyner and drummer Elvin Jones, both members of tenor saxophonist John Coltrane's contemporaneous quartet.
+
+It's worth noting that the model did very well in the B-side experiment here: all songs from Inner Urge appear here among the top recommendations. I expected any number of other Joe Henderson recordings from the same era as well as McCoy Tyner and Elvin Jones collaborations (there were many) to appear in this set. However, they were much less prominent that expected. Two novel (to me) artists Lester Bowie and The Don Rendell / Ian Carr Quintet appeared among the top. I consider the Lester Bowie recommendation an A in exploration; that song is an excellent piece of avant-garde jazz with stytlistic feels that closely resemble Henderson. The Rendell/Carr stuff is also great. I'm actually still listening to his "The Great Pretender" which is sixteen minutes long. Other artists appearing in the list, including Bobby Hutcherson, Eric Dolphy and Andrew Hill, are great jazz artists whose work is worth knowing and who are close to Henderson--if a little more out there.
+
+Grade: A. If you like "Isotope," play this list. It makes me think that the recommender was better than I was giving it credit for.
+
 ## Future Work
 
 There are many opportunities to improve the system.
 
-There are potential data quality issues which, if mitigated, may provide a performance boost.  The data fed the system has some liability to duplicate nodes. 
-Duplicate performance nodes may emerge from releases and compliation if the Musicbrainz data does not corretly associate the recording id in the re-release. Songs are often published with variant names, potentially creating duplicate entries. Missing performance-artist edges are likely for less common artists, especially when those artists did not publish as band leaders or published with muliple names. Missing song-performance edges are likely when a song has a variant title. 
+There are potential data quality issues which, if mitigated, may provide a performance boost.  The data fed the system has some liability to duplicate nodes.
+Duplicate performance nodes may emerge from releases and compliation if the Musicbrainz data does not corretly associate the recording id in the re-release. Songs are often published with variant names, potentially creating duplicate entries. Missing performance-artist edges are likely for less common artists, especially when those artists did not publish as band leaders or published with muliple names. Missing song-performance edges are likely when a song has a variant title.
 
 In addition to data quality issues, there are some feature in the data which have not been used. Release year, in particular, is probably a strong signal of similarity. For artists with long careers, performances that are nearby in year may be more similar than distant years. (However, some artists take "evolutionary" turns in a single year, creating sharp stylistic boundaries in their work.) Finding additional data outside of the datasets here, such as tempo, would also be beneficial. An exciting feature possibility is to encode recordings themselves as features, though this confronts significant issues of copyright as well as complexity.
 
-The validation data here is just the author's Spotify history. It would be useful to expand these data. Any user's spotify data is affected by the recommendation systems that Spotify uses. It would be useful to find other sources of data (Apple Music, etc.) to verify against those results. 
+The validation data here is just the author's Spotify history. It would be useful to expand these data. Any user's spotify data is affected by the recommendation systems that Spotify uses. It would be useful to find other sources of data (Apple Music, etc.) to verify against those results.
 There are also multiple ways to decide which listen's in a history are used as seeds. Ideally, a seed value is a performance that the user certainly likes; here, we assumed that if the user listened to it, they liked it. This is obviously an over-simplification, and alternatives approaches to classifying liked songs may be useful. Even with only one user's history, these may be useful alternative validation strategies.
 
 There are a number of validation steps not taken here which might nevertheless be added in the future. Those which, like the B-side experiment, examine specific expected similarities would be useful. Exploring embedding distance directly would be helpful. For example, we would expect the average distance between performances of the same song to be smaller between distances songs and randomly selected songs. Similar expectations emerge with the role of instruments, songs with the same composer, and so on. In general, for any edge type in the graph, we expect source nodes connected through a single destination node to be more similar than to randomly selected nodes of the destination type. Explicitly testing these expectations will provide insight into potential areas for improvement and provide a sense of the difference between various approaches to modeling, data changes, etc.
 
-The GNN architectures here may not be optimal. Too late in development to add it, I discovered Metapath2Vec, variant of Node2Vec, which is based on Word2Vec. It uses metapaths like (artst -> performance -> artist) to take random walks of a graph. These random walks are treated like sequences in Word2Vec and the model constructs embeddings which predict the probability of other nodes being within the context window of the node. I suspect that this will be stronger than the SimCLR approach taken here. 
+The GNN architectures here may not be optimal. Too late in development to add it, I discovered Metapath2Vec, variant of Node2Vec, which is based on Word2Vec. It uses metapaths like (artst -> performance -> artist) to take random walks of a graph. These random walks are treated like sequences in Word2Vec and the model constructs embeddings which predict the probability of other nodes being within the context window of the node. I suspect that this will be stronger than the SimCLR approach taken here.
 
 Within the SimCLR architecture here, it may also be useful to consider alternative augementations. After the fact, the failure of the edge ablation task is somewhat obvious: in a graph, edge removal amounts to information destruction; augementation by adding missing edges or changing node features might be more effective, especially combined with the suggestion to add features mentioned above. While albums are one concept of similarity, it's worth considering others that might be availbale. I will probably try Metapath2Vec and variants before doing these, however.
 
@@ -304,7 +330,7 @@ The groups and the proportion of edges they label are given below:
 
 ## Appendix B: B-side Experiement
 
-The selection of albums for the B-side experiment was not systematic. I chose albums where qualitatively assessing recommendations would be easy for me and published around 1960 because while prototyping the model, I used data from that era only. The era in question is a highly connected period in Jazz. 
+The selection of albums for the B-side experiment was not systematic. I chose albums where qualitatively assessing recommendations would be easy for me and published around 1960 because while prototyping the model, I used data from that era only. The era in question is a highly connected period in Jazz.
 
 | Arist | Album | Notes |
 |-------|-------|-------|
@@ -316,6 +342,139 @@ The selection of albums for the B-side experiment was not systematic. I chose al
 |Ornette Coleman|The Shape of Jazz to Come| One very well connected song (Lonely Woman) but less well connected performer/performances than some others here. This was a highly challenging example for all models.|
 
 
+## Appendix C: Qualitative Selection Results
+
+The small sample, used in the second set of qualitative assessments, was this:
+
+|   recording_id | Artist                   | Album                                                            | Performance Title                      |
+|---------------:|:----------------|:---------------------------------|:-----------------------------|
+|        3427034 | Joe Henderson   | Inner Urge                       | Night and Day                |
+|       14805308 | Joe Henderson   | Inner Urge                       | Inner Urge                   |
+|       14805309 | Joe Henderson   | Inner Urge                       | Isotope                      |
+|       14805310 | Joe Henderson   | Inner Urge                       | El Barrio                    |
+|       14805311 | Joe Henderson   | Inner Urge                       | You Know I Care              |
+|        1662631 | Bill Evans Trio | Sunday at the Village Vanguard   | Gloria’s Step (take 2)       |
+|         696865 | Bill Evans Trio | Sunday at the Village Vanguard   | Jade Visions (take 2)        |
+|         159842 | Bill Evans Trio | Sunday at the Village Vanguard   | Alice in Wonderland (take 2) |
+|         159841 | Bill Evans Trio | Sunday at the Village Vanguard   | Solar                        |
+|       12541732 | Bill Evans Trio | Sunday at the Village Vanguard   | My Man’s Gone Now            |
+|       12541735 | Bill Evans Trio | Sunday at the Village Vanguard   | All of You (take 2)          |
+|         415771 | Wayne Shorter   | Speak No Evil                    | Witch Hunt                   |
+|         415772 | Wayne Shorter   | Speak No Evil                    | Fee‐Fi‐Fo‐Fum                |
+|         415774 | Wayne Shorter   | Speak No Evil                    | Dance Cadaverous             |
+|         415775 | Wayne Shorter   | Speak No Evil                    | Speak No Evil                |
+|         415777 | Wayne Shorter   | Speak No Evil                    | Infant Eyes                  |
+|         415779 | Wayne Shorter   | Speak No Evil                    | Wild Flower                  |
+|        5748097 | Oliver Nelson   | The Blues and the Abstract Truth | Stolen Moments               |
+|         811575 | Oliver Nelson   | The Blues and the Abstract Truth | Hoe‐Down                     |
+|         811576 | Oliver Nelson   | The Blues and the Abstract Truth | Cascades                     |
+|         811577 | Oliver Nelson   | The Blues and the Abstract Truth | Yearnin’                     |
+|         811578 | Oliver Nelson   | The Blues and the Abstract Truth | Butch and Butch              |
+|         811579 | Oliver Nelson   | The Blues and the Abstract Truth | Teenie’s Blues               |
 
 
 
+Results from using my full spotify history (top 30 recommendations):
+
+|   recording_id | Artist                   | Album                                                            | Performance Title                      |
+|---------------:|:-------------------------|:-----------------------------------------------------------------|:--------------------------------------|
+|        7358212 | Lee Morgan               | Vol. 3                                                           | Tip-Toeing                            |
+|        5511186 | Jackie McLean            | Let Freedom Ring                                                 | Rene                                  |
+|         495915 | Thelonious Monk Quintet  | 5 by Monk by 5                                                   | Played Twice (take 2)                 |
+|        9632965 | Lee Morgan               | Vol. 3                                                           | Domingo                               |
+|        8585598 | Lee Morgan               | Vol. 3                                                           | Hasaan's Dream                        |
+|         365672 | Miles Davis Sextet       | Someday My Prince Will Come                                      | Someday My Prince Will Come           |
+|         495912 | Thelonious Monk Quintet  | 5 by Monk by 5                                                   | Straight, No Chaser                   |
+|         495916 | Thelonious Monk Quintet  | 5 by Monk by 5                                                   | I Mean You                            |
+|        5511185 | Jackie McLean            | Let Freedom Ring                                                 | I’ll Keep Loving You                  |
+|         495914 | Thelonious Monk Quintet  | 5 by Monk by 5                                                   | Played Twice (take 1)                 |
+|        5511184 | Jackie McLean            | Let Freedom Ring                                                 | Melody for Melonae                    |
+|         495911 | Thelonious Monk Quintet  | 5 by Monk by 5                                                   | Jackie‐ing                            |
+|         495917 | Thelonious Monk Quintet  | 5 by Monk by 5                                                   | Ask Me Now                            |
+|         495913 | Thelonious Monk Quintet  | 5 by Monk by 5                                                   | Played Twice (take 3)                 |
+|        7910939 | Tommy Turrentine         | Tommy Turrentine                                                 | Long as You're Living                 |
+|        7358210 | Lee Morgan               | Vol. 3                                                           | Mesabi Chant                          |
+|        6723097 | Wes Montgomery           | Full House                                                       | I've Grown Accustomed to Her Face     |
+|        9553884 | Charlie Rouse            | Bossa Nova Bacchanal                                             | Back to the Tropics                   |
+|         599006 | Grant Green              | Idle Moments                                                     | Django                                |
+|        7910938 | Tommy Turrentine         | Tommy Turrentine                                                 | Time's Up                             |
+|        7910942 | Tommy Turrentine         | Tommy Turrentine                                                 | Blues for J.P.                        |
+|         599008 | Grant Green              | Idle Moments                                                     | Jean de Fleur (alternate take)        |
+|        8387587 | Max Roach                | Drums Unlimited                                                  | In the Red (A Xmas Carol)             |
+|        7910937 | Tommy Turrentine         | Tommy Turrentine                                                 | Webb City                             |
+|        7910936 | Tommy Turrentine         | Tommy Turrentine                                                 | Gunga Din                             |
+|       14350053 | The Kenny Dorham Quintet | Scandia Skies                                                    | Manha de Carnaval                     |
+|        3002492 | Herbie Hancock           | My Point of View                                                 | Blind Man, Blind Man (alternate take) |
+|        2073873 | Miles Davis              | In Person: Friday and Saturday Nights at the Blackhawk, Complete | Fran Dance                            |
+|        3282589 | Thelonious Monk          | It’s Monk’s Time                                                 | Lulu’s Back in Town                   |
+|         599009 | Grant Green              | Idle Moments                                                     | Django (alternate take)               |
+
+Results using Joe Henderson, Isotope, as the seed (with seed removed):
+
+|   recording_id | Artist                   | Album                                     | Performance Title                      |
+|---------------:|:-----------------------------------|:--------------------------------|:------------------------|
+|       14805308 | Joe Henderson                      | Inner Urge                      | Inner Urge              |
+|       31407187 | The Don Rendell / Ian Carr Quintet | Shades of Blue                  | Just Blue               |
+|       14805310 | Joe Henderson                      | Inner Urge                      | El Barrio               |
+|       31407190 | The Don Rendell / Ian Carr Quintet | Shades of Blue                  | Blue Doom               |
+|        5895422 | Lester Bowie                       | The Great Pretender             | It’s Howdy Doody Time   |
+|       22843880 | Lester Bowie                       | The Great Pretender             | The Great Pretender     |
+|       31407189 | The Don Rendell / Ian Carr Quintet | Shades of Blue                  | Garrison 64             |
+|       14805311 | Joe Henderson                      | Inner Urge                      | You Know I Care         |
+|       21839953 | Pete La Roca                       | Turkish Women at the Bath       | Dancing Girls           |
+|       10492802 | The Don Rendell / Ian Carr Quintet | Dusk Fire                       | Tan Samfu               |
+|        3915344 | Pete La Roca                       | Basra                           | Eiderdown               |
+|        3427034 | Joe Henderson                      | Inner Urge                      | Night and Day           |
+|         278907 | Eric Dolphy                        | At the Five Spot, Volume 1      | The Prophet             |
+|       31407192 | The Don Rendell / Ian Carr Quintet | Shades of Blue                  | Big City Strut          |
+|        8629708 | Andrew Hill                        | One for One                     | Without Malice          |
+|       31407186 | The Don Rendell / Ian Carr Quintet | Shades of Blue                  | Latin Blue              |
+|        5895426 | Lester Bowie                       | The Great Pretender             | Oh, How the Ghost Sings |
+|       10492807 | The Don Rendell / Ian Carr Quintet | Dusk Fire                       | Dusk Fire               |
+|       31407185 | The Don Rendell / Ian Carr Quintet | Shades of Blue                  | Blue Mosque             |
+|        2575473 | Bobby Hutcherson                   | Stick-Up!                       | Blues Mind Matter       |
+|        2575472 | Bobby Hutcherson                   | Stick-Up!                       | Verse                   |
+|       10492805 | The Don Rendell / Ian Carr Quintet | Dusk Fire                       | Prayer                  |
+|        3915339 | Pete La Roca                       | Basra                           | Malagueña               |
+|        6085827 | Elvin Jones                        | Brother John                    | Harmonique              |
+|        5777369 | Steve Lacy                         | The Straight Horn of Steve Lacy | Louise                  |
+|        2575469 | Bobby Hutcherson                   | Stick-Up!                       | 8/4 Beat                |
+|        2575470 | Bobby Hutcherson                   | Stick-Up!                       | Summer Nights           |
+|        8629706 | Andrew Hill                        | One for One                     | One for One             |
+|       31407191 | The Don Rendell / Ian Carr Quintet | Shades of Blue                  | Shades of Blue          |
+|        5895425 | Lester Bowie                       | The Great Pretender             | Rose Drop               |
+
+Results of the small sample, seeds removed:
+
+|   recording_id | Artist                   | Album                                                            | Performance Title                      |
+|---------------:|:------------------------------------|:-------------------------------------------------------------------------------------|:------------------------------------|
+|       31487448 | Lucky Thompson                      | Plays Jerome Kern And No More                                                        | Why Do I Love You?                  |
+|       19531578 | The Joe Henderson Quintet           | At the Lighthouse - "If You're Not Part of the Solution, You're Part of the Problem" | Caribbean Fire Dance                |
+|        1130451 | John Coltrane                       | The Heavyweight Champion: The Complete Atlantic Recordings                           | Giant Steps (take 3) (incomplete)   |
+|       15177263 | Joe Henderson Sextet                | The Kicker                                                                           | Mo' Joe                             |
+|       19531586 | The Joe Henderson Quintet           | At the Lighthouse - "If You're Not Part of the Solution, You're Part of the Problem" | Blue Bossa                          |
+|       15177259 | Joe Henderson Sextet                | The Kicker                                                                           | If                                  |
+|         159726 | Miles Davis                         | Miles Davis’ Greatest Hits                                                           | So What                             |
+|       12317340 | Joe Zawinul                         | Money in the Pocket                                                                  | Some More of Dat                    |
+|        4389458 | Max Roach, His Chorus and Orchestra | It’s Time                                                                            | The Profit                          |
+|       27857896 | John Coltrane                       | The Heavyweight Champion: The Complete Atlantic Recordings                           | Giant Steps, take 6 (alternate)     |
+|       19531582 | The Joe Henderson Quintet           | At the Lighthouse - "If You're Not Part of the Solution, You're Part of the Problem" | ’round Midnight                     |
+|        4389456 | Max Roach, His Chorus and Orchestra | It’s Time                                                                            | Sunday Afternoon                    |
+|        4389455 | Max Roach, His Chorus and Orchestra | It’s Time                                                                            | Another Valley                      |
+|        6663125 | The Cecil Taylor Quintet            | Hard Driving Jazz                                                                    | Shifting Down                       |
+|       14358520 | Chet Baker                          | The Trumpet Artistry of Chet Baker                                                   | Russ Job                            |
+|       15177262 | Joe Henderson Sextet                | The Kicker                                                                           | O Amor Em Paz                       |
+|        6966939 | John Coltrane                       | Alternate Takes                                                                      | I'll Wait and Pray (alternate take) |
+|       15177256 | Joe Henderson Sextet                | The Kicker                                                                           | Mamacita                            |
+|       19531583 | The Joe Henderson Quintet           | At the Lighthouse - "If You're Not Part of the Solution, You're Part of the Problem" | Mode for Joe                        |
+|       15177257 | Joe Henderson Sextet                | The Kicker                                                                           | The Kicker                          |
+|       14358521 | Chet Baker                          | The Trumpet Artistry of Chet Baker                                                   | Tommy Hawk                          |
+|       19531580 | The Joe Henderson Quintet           | At the Lighthouse - "If You're Not Part of the Solution, You're Part of the Problem" | A Shade Of Jade                     |
+|        6924114 | Wes Montgomery                      | Movin' Along                                                                         | Tune-Up (take 4)                    |
+|        6924121 | Wes Montgomery                      | Movin' Along                                                                         | Movin' Along (take 4)               |
+|        4389454 | Max Roach, His Chorus and Orchestra | It’s Time                                                                            | It’s Time                           |
+|        4389457 | Max Roach, His Chorus and Orchestra | It’s Time                                                                            | Living Room                         |
+|       15177258 | Joe Henderson Sextet                | The Kicker                                                                           | Chelsea Bridge                      |
+|        5319124 | Wes Montgomery                      | Movin' Along                                                                         | Tune Up                             |
+|       19531587 | The Joe Henderson Quintet           | At the Lighthouse - "If You're Not Part of the Solution, You're Part of the Problem" | Closing Theme                       |
+|        6924113 | Wes Montgomery                      | Movin' Along                                                                         | Movin' Along (take 5)               |
