@@ -1,0 +1,112 @@
+\documentclass[final]{beamer}
+
+\usepackage[size=custom,width=120,height=90,scale=1.2]{beamerposter}
+\usepackage{booktabs}
+
+\usetheme{default} % or try 'ConfPoster'
+
+\title{Jazz Graph: \newline A Graph Neural Network for Jazz Music Recommendation}
+\author{Stephen Lenhart \\ \texttt{lenhart.lenhart@gmail.com}}
+\date{1 May 2026}
+\institute{University of Arizona \newline College of Information Science}
+
+\begin{document}
+	\begin{frame}[t]
+		\vspace{-15em}
+		\titlepage
+		\vspace{-25em}
+		\begin{columns}[t]
+			
+			% LEFT COLUMN
+			\begin{column}{0.32\textwidth}
+				\begin{block}{\Large Problem Statement}  % Name?
+				Create musical recommendation by encoding collaboration as similarity signal?
+				\begin{figure}
+					\includegraphics[width=\linewidth]{../poster_graph.png}
+					\caption{A sub-graph illustrating connections among jazz performances.}
+				\end{figure}
+				\end{block}
+				
+				\begin{block}{Background and Related work}
+					Explain what you did.
+				\end{block}
+			\end{column}
+			
+			% MIDDLE COLUMN
+			\begin{column}{0.32\textwidth}
+
+				\begin{block}{\Large System Architecture}  % Methodology and Approach
+					\begin{figure}
+						\includegraphics[width=\linewidth]{../gnn_system}
+						\caption{A data extraction pipeline(left), self-supervised learning with GNN (middle) and recommendation system (right.)}
+					\end{figure}
+				\end{block}
+				\begin{block}{Results}
+				\begin{itemize}
+					\item Novel Recall: Relevance of model recommendations.
+					\item Novelty: Exploratory model behavior.
+					\item B-Side: Expected recommendations for narrow seeds.
+				\end{itemize}
+				\vspace{1em}
+				\small
+				\begin{tabular}{ll l r r r r}
+					\toprule
+					Task & Features & Pooling & Novel Recall & Familiar Recall & Novelty & B-side Mean \\
+					\midrule
+					Combined Loss & Instrument, Style & sum     & 0.276 & 0.328 & 0.806 & 0.822 \\
+					Combined Loss & Instrument, Style & max     & 0.297 & 1     & 0.840 & \textbf{0.839} \\
+					Combined Loss & Instrument, Style & softmax & 0.276 & 0.318 & 0.807 & 0.822 \\
+					
+					Edge Ablation & Instrument, Style & sum     & 0.314 & 0.365 & 0.910 & 0     \\
+					Edge Ablation & Instrument, Style & max     & 0.239 & 1     & \textbf{0.917} & 0 \\
+					Edge Ablation & Instrument, Style & softmax & 0.323 & 0.393 & 0.910 & 0 \\
+					
+					Match Album & None & sum     & 0.278 & 0.378 & 0.850 & 0.434 \\
+					Match Album & None & max     & 0.173 & 1     & 0.835 & 0.345 \\
+					Match Album & None & softmax & 0.314 & 0.395 & 0.840 & 0.411 \\
+					
+					Match Album & Instrument, Style & sum     & 0.485 & 0.544 & 0.805 & 0.548 \\
+					Match Album & Instrument, Style & max     & 0.295 & 1     & 0.829 & 0.523 \\
+					Match Album & Instrument, Style & softmax & \textbf{0.518} & \textbf{0.608} & 0.804 & 0.548 \\
+					
+					Random Walk Baseline & --- & --- & 0.194 & 0.202 & 0.523 & 0.132 \\
+					Artist Weighted Baseline & --- & --- & 0.420 & 0.405 & 0.011 & 0 \\
+					\bottomrule
+				\end{tabular}
+				\end{block}
+			\end{column}
+			
+			% RIGH COLUMN
+			\begin{column}{0.32\textwidth}
+				
+				\begin{block}{Conclusion}  
+					Key takeaway here.
+				\end{block}
+				
+				\begin{block}{Challenges and Limitations}  
+					Key takeaway here.
+				\end{block}
+				
+				\begin{block}{Future Work}  
+					Key takeaway here.
+				\end{block}
+				
+				\begin{block}{Discovery}  
+					\begin{figure}
+						\includegraphics[width=0.3\linewidth]{../the-great-pretender3}
+						\caption{Lester Bowie, "The Great Pretender" (1982) Great music I discovered with JazzGraph. }
+					\end{figure}
+				\end{block}
+				
+				\begin{block}{Repository}  
+					\begin{figure}
+						\includegraphics[width=0.1\linewidth]{../repo_qr_code.png}
+						\caption{https://www.github.com/philosofool/jazz-graph}
+					\end{figure}
+				\end{block}				
+			\end{column}
+			
+		\end{columns}
+	\end{frame}
+	
+\end{document}
