@@ -4,7 +4,7 @@
 
 ![System Diagram](/documents/system_diagram.png)
 
-The JazzGraph system includes a data pipeline (left), machine learning system (middle) and a recommendation system (right side). The pipeline builds a graph from two public data sources. The ML system provides embeddings representing the similarity of jazz musical performances. The recommender uses these embeddings to generate recommendations.
+JazzGraph includes a data pipeline (left), machine learning system (middle) and a recommendation system (right side). The pipeline builds a graph from two public data sources. The ML system provides embeddings representing the similarity of jazz musical performances. The recommender uses these embeddings to generate recommendations.
 
 The complete repository for JazzGraph is at https://www.github.com/philosofool/jazz-graph.
 
@@ -90,7 +90,7 @@ I discuss the specific features with each node in the training section below.
 
 The above tables were written to parquet files and each file can be extracted with limited modification into a Pytorch Geometric heterogenous dataset. After extracting the data, I removed any isolated nodes, which correspond to performances without performer or song edges. I treated the graph as undirected.
 
-|   |  Node Count  |
+| Node Type  |  Node Count  |
 |:--|-------------:|
 |Artist      | 24,470  |
 |Performance | 130,695 |
@@ -452,7 +452,7 @@ Results using Joe Henderson, Isotope, as the seed (with seed removed):
 
 Results of the small sample, seeds removed:
 
-|   recording_id | Artist                   | Album                                                            | Performance Title                      |
+|   recording_id | Artist                              | Album                                                            | Performance Title                      |
 |---------------:|:------------------------------------|:-------------------------------------------------------------------------------------|:------------------------------------|
 |       31487448 | Lucky Thompson                      | Plays Jerome Kern And No More                                                        | Why Do I Love You?                  |
 |       19531578 | The Joe Henderson Quintet           | At the Lighthouse - "If You're Not Part of the Solution, You're Part of the Problem" | Caribbean Fire Dance                |
