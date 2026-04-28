@@ -11,6 +11,9 @@
 \date{1 May 2026}
 \institute{University of Arizona \newline College of Information Science}
 
+%\setbeamerfont{title}{size=\Huge}
+\setbeamerfont{title}{size=\fontsize{100}{110}\selectfont}
+
 \begin{document}
 	\begin{frame}[t]
 		\vspace{-5em}
@@ -24,15 +27,12 @@
 				Create musical recommendation by encoding collaboration as similarity signal.
 				\begin{figure}
 					\includegraphics[width=\linewidth]{../poster_graph.png}
-					\caption{A sub-graph illustrating connections among jazz performances.}
+					\caption{A sub-graph illustrating connections among jazz performances. This is the one-hop neighborhood of the depicted performances. }
 				\end{figure}
 				\end{block}
 				\begin{block}{Data}  
 					\vspace{1em}
 					\small
-					%					 (artist, composed, song)={ edge_index=[2, 36252] },
-					%					(artist, performs, performance)={ edge_index=[2, 516713] },
-					%					(performance, performing, song)={ edge_index=[2, 86588] },
 					\begin{center}
 						
 						\begin{tabular}{ll r r }
@@ -41,7 +41,7 @@
 							Node/Edge Type & Count  & Mean degree  & Mean degree \\
 							&           & source     & destination \\
 							\midrule
-							Artist  & 24,470 & & \\
+							Artist                            &  24,470 & & \\
 							Performance                       &  130,695 & \\
 							Song                              &  31,828 & &  \\
 							Artist \emph{performs} performance & 516,713 & 21.11 & 3.95 \\
@@ -73,7 +73,7 @@
 					Score each member of the performance corpus, $p_i$, with each seed performance (user-liked recording)  $$
 					score(p_i) =  agg(\sum_{k=1}^{n}gnn(p_i)^\intercal gnn(p_k))
 					$$
-					where $gnn$ is the embedding learned from the graph of jazz performances, artists and songs and $agg$ is an aggregation or pooling function. Experiments were run with \emph{max}, \emph{sum} and \emph{softmax-wieghting}.
+					where $gnn$ is the embedding learned from the graph of jazz performances, artists and songs and $agg$ is an aggregation or pooling function. Experiments were run with \emph{max}, \emph{sum} and \emph{softmax-weighting}.
 					
 				\end{block}
 				
@@ -95,7 +95,7 @@
 						\caption{https://www.github.com/philosofool/jazz-graph}
 					\end{figure}
 				\end{block}	
-				\begin{block}{Results}
+				\begin{block}{\Large Results}
 				\begin{itemize}
 					\item Novel Recall: Relevance of model recommendations.
 					\item Novelty: Exploratory model behavior.
@@ -150,7 +150,7 @@
 					\end{figure}
 				\end{block}	
 %				
-				\begin{block}{Future Work}  
+				\begin{block}{\Large Future Work}  
 					\begin{itemize}
 						\item Expand validations
 						\item Provide additional features, such as session dates, mood, tempo
@@ -160,7 +160,7 @@
 					\end{itemize}
 				\end{block}
 				
-				\begin{block}{Discovery}
+				\begin{block}{\Large Discovery}
 						Listen to recommendations based on Joe Henderson's "Isotope":
 						\begin{columns}
 							\begin{column}{0.5\linewidth}
