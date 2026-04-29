@@ -98,7 +98,7 @@ class BSideExperiment:
         return results
 
 
-class SpotifyExperiement:
+class SpotifyExperiment:
     def __init__(self, recording_traits: pd.DataFrame, listening_history: list[dict], log_dir: str, seed=None):
         self.listening_history = listening_history
         self.log_dir = log_dir

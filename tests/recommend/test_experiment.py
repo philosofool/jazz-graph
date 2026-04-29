@@ -1,4 +1,4 @@
-from jazz_graph.recommendation.experiment import RandomAlbumSplit, SpotifyExperiement
+from jazz_graph.recommendation.experiment import RandomAlbumSplit, SpotifyExperiment
 import numpy as np
 # from warnings import ...
 from collections import namedtuple
@@ -52,8 +52,8 @@ class TestSpotifyExperiment:
         fn_familiar = np.arange(1100, 1200)
         exploratory_familiar = np.arange(1200, 2000)
 
-        monkeypatch.setattr(SpotifyExperiement, 'in_samples', property(lambda self: np.arange(1000, 1200)))
-        monkeypatch.setattr(SpotifyExperiement, 'out_samples', property(lambda self: np.arange(0, 200)))
+        monkeypatch.setattr(SpotifyExperiment, 'in_samples', property(lambda self: np.arange(1000, 1200)))
+        monkeypatch.setattr(SpotifyExperiment, 'out_samples', property(lambda self: np.arange(0, 200)))
 
         import string
         import random
@@ -69,7 +69,7 @@ class TestSpotifyExperiment:
         albums = make_gibberish_array(2_000)
         recording_traits = pd.DataFrame({'artist': artist, 'title': title, 'album': albums, 'release_date': np.arange(2000)}, index=np.arange(2000))
 
-        spotify_experiment = SpotifyExperiement(recording_traits, {}, tmp_path)
+        spotify_experiment = SpotifyExperiment(recording_traits, {}, tmp_path)
 
         # Test 1: 0 recall novel, 1.0 recall familiar
         recommendations = np.concat([
@@ -130,7 +130,7 @@ class TestSpotifyExperiment:
         # assert result['recall_novel'] == 1.
 
     def test_coverage(self, recording_traits, spotify_data, tmp_path):
-        spotify_experiment = SpotifyExperiement(recording_traits, spotify_data, tmp_path)
+        spotify_experiment = SpotifyExperiment(recording_traits, spotify_data, tmp_path)
         seeded = [
             159729, 159730, 384218,
             270583, 30646764
