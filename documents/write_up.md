@@ -180,7 +180,7 @@ In addition to the GNN base models, I wrote two baseline recommender systems for
 
 I constructed three measures of recommendation quality: novel recall, novelty, and a b-side experiment.
 
-The first two use a listener's Spotify history to generate recommendations and then examine the qualities of the recommendations. Publicly available, granular data representing user engagement with music is scarce. As a proxy for a broader listening histories, I used my own Spotify listening history. With the same normalization process used to extract the dataset, the history is matched with artist, album and song title using against the Discogs sources. Each matched item is an eligible seed, and seeds were unweighted; for example, a performance listened to 100 times was weighted the same as a performance listened to once. I split the listening history into seed and holdout sets. Performances are split randomly by album, so that when two performances appear on the same album, they are in the same split. The reason for album splitting is that if two songs are on the same album, it is almost trivial to know that I should recommend any unseeded performances that share an album with a seeded performance. The task is significantly more challenging if the system needs to understand that performance from different albums, which are more likely to be disjoint in some features, are similar.
+The first two use a listener's Spotify history to generate recommendations and then examine the qualities of the recommendations. Publicly available, granular data representing user engagement with music is scarce. As a proxy for a broader listening histories, I used my own Spotify listening history. This dataset includes 2810 unique performances; Appendix D provides a brief summary of the most popular artists in the dataset, as measure by the name of the artist with the record in Spotifies metadata. With the same normalization process used to extract the dataset, the history is matched with artist, album and song title using against the Discogs sources. Each matched item is an eligible seed, and seeds were unweighted; for example, a performance listened to 100 times was weighted the same as a performance listened to once. I split the listening history into seed and holdout sets. Performances are split randomly by album, so that when two performances appear on the same album, they are in the same split. The reason for album splitting is that if two songs are on the same album, it is almost trivial to know that I should recommend any unseeded performances that share an album with a seeded performance. The task is significantly more challenging if the system needs to understand that performance from different albums, which are more likely to be disjoint in some features, are similar.
 
 Novel recall is top-K recall on the held-out performances and is measures the relevance of the recommendations. We set K to a top 20% of ranked recommendations. Recall is an appropriate metric for this system. It measures the system's ability to detect relevance while not penalizing the system for indicating relevance outside the listener's history. Strong recall on held-out data suggests high relevance in the collection of recommendations, which is our target.  I also provide the familiar recall for all models, which indicates recall of seed performances in the top-K.
 
@@ -484,3 +484,28 @@ Results of the small sample, seeds removed:
 |        5319124 | Wes Montgomery                      | Movin' Along                                                                         | Tune Up                             |
 |       19531587 | The Joe Henderson Quintet           | At the Lighthouse - "If You're Not Part of the Solution, You're Part of the Problem" | Closing Theme                       |
 |        6924113 | Wes Montgomery                      | Movin' Along                                                                         | Movin' Along (take 5)               |
+
+## Appendix D: Summary of Spotify Evaluation Data
+
+|    | artist               |   unique_performances |
+|---:|:---------------------|----------------------:|
+|  0 | Herbie Hancock       |                    76 |
+|  1 | McCoy Tyner          |                    69 |
+|  2 | Miles Davis          |                    64 |
+|  3 | John Coltrane        |                    59 |
+|  4 | Bill Evans Trio      |                    58 |
+|  5 | The Bad Plus         |                    55 |
+|  6 | Ahmad Jamal          |                    53 |
+|  7 | Oscar Peterson       |                    47 |
+|  8 | Charles Mingus       |                    39 |
+|  9 | Joe Henderson        |                    36 |
+| 10 | Wayne Shorter        |                    35 |
+| 11 | Gerald Clayton       |                    34 |
+| 12 | Dexter Gordon        |                    31 |
+| 13 | Dave Brubeck         |                    30 |
+| 14 | Andrew Hill          |                    30 |
+| 15 | Bobby Timmons        |                    30 |
+| 16 | Kenny Barron         |                    28 |
+| 17 | Freddie Hubbard      |                    27 |
+| 18 | Dave Holland Quintet |                    26 |
+| 19 | Wes Montgomery       |                    25 |
