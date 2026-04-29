@@ -10,7 +10,7 @@ from torch_geometric.data import HeteroData
 from jazz_graph.data.fetch import fetch_recording_traits
 from jazz_graph.model.model import UnsupervisedJazzModel
 from jazz_graph.recommendation.recommender import LookupRecordings, RandomWalkRecommender, ArtistWeightedRecommender
-from jazz_graph.recommendation.experiment import BSideExperiment, SpotifyExperiement
+from jazz_graph.recommendation.experiment import BSideExperiment, SpotifyExperiment
 from jazz_graph.recommendation.recommender import InferenceRecommender
 from jazz_graph.training.logging import load_model
 
@@ -136,7 +136,7 @@ def run_experiments():
             for spotify_path, spotify_data in spotify_datasets:
                 if not spotify_data:
                     continue
-                spotify_experiment = SpotifyExperiement(recording_traits, spotify_data, seed=RANDOM_SEED, log_dir=log_dir)
+                spotify_experiment = SpotifyExperiment(recording_traits, spotify_data, seed=RANDOM_SEED, log_dir=log_dir)
                 experiment_config['spotify_data'] = spotify_path
                 spotify_experiment.run_experiment(recommender, experiment_config, k=20)
             experiment_config.pop('spotify_data')
@@ -162,7 +162,7 @@ def baseline_experiments():
     for spotify_path, spotify_data in create_spotify_datasets(SPOTIFY_DATA_PATH):
         if not spotify_data:
             continue
-        spotify_experiment = SpotifyExperiement(recording_traits, spotify_data, seed=RANDOM_SEED, log_dir='/workspace/experiments/official_spotify_baselines')
+        spotify_experiment = SpotifyExperiment(recording_traits, spotify_data, seed=RANDOM_SEED, log_dir='/workspace/experiments/official_spotify_baselines')
         spotify_experiment.run_experiment(simple_artist_recommender, simple_artist_config)
         sleep(1.1)  # you can get name collisions in the experiment logging without this.
         spotify_experiment.run_experiment(baseline_recommender, rand_walk_config)
