@@ -2,7 +2,7 @@
 
 ## System Architecture
 
-![System Diagram](/documents/system_diagram.png)
+![System Diagram](/documents/gnn_system_png.png)
 
 JazzGraph includes a data pipeline (left), machine learning system (middle) and a recommendation system (right side). The pipeline builds a graph from two public data sources. The ML system provides embeddings representing the similarity of jazz musical performances. The recommender uses these embeddings to generate recommendations.
 
@@ -12,16 +12,16 @@ The complete repository for JazzGraph is at https://www.github.com/philosofool/j
 
 This project leverages collaboration with in jazz musical works to create a recommendation system. The main goals of the project are (1) to establish a large corpus of data about jazz music and collect that data in a graph format, (2) to develop a graph neural network that learns representation of jazz performances and (3) to build and evaluate a recommendation system which uses those representations to make recommendations.
 
-Jazz music is highly collaborative. Jazz musicians collaborate directly when performing songs. Indirectly, jazz musicians play songs written by other jazz musicians. Most famous musicians in jazz from the 1950s and 1960s all played together at one time or another. One could learn about new jazz simply starting with "Kind of Blue," the most famous and best selling jazz album of all time, and pick any artist on it to find another album of jazz. The most famous jazz songs have been performed by most famous jazz musicians, often several times. Jazz performances involve rearrangement, improvisation, and substantial novelty as well. Many famous jazz performances, such as John Coltrane's "My Favorite Things" are stylistic re-imaginings of the originals.
+Jazz music is highly collaborative. Jazz musicians collaborate directly when performing songs. Indirectly, jazz musicians play songs written by other jazz musicians. Most famous musicians in jazz from the 1950s and 1960s played together at one time or another. One could learn about new jazz simply starting with "Kind of Blue," the most famous and best selling jazz album of all time, and pick any artist on it to find another album of jazz. The most famous jazz songs have been performed by most famous jazz musicians, often several times. Jazz performances involve rearrangement, improvisation, and substantial novelty as well. Many famous jazz performances, such as John Coltrane's "My Favorite Things" are stylistic re-imaginings of the originals.
 
 Jazz thus forms an elaborate social network, readily represented as a graph. Analysis and modeling of graphs is an active area of computer science, mathematics and data science.
 
-The aim to produce a recommender system based on jazz collaboration differs from many recommender system approaches in some ways.
+The aim to produce a recommender system based on jazz collaboration differs in some ways from many recommender system approaches.
 JazzGraph uses topological features of the subject matter to produce representations of similarity that may be used for recommendation.
 Music and other entertainment content have often relied on systems of aggregating knowledge and preference from human users to make recommendations. For example, collaborative filtering is often a matrix factorization problem where user-item interactions are the modeled data.
 In such a context, user-item interaction are either (1) a proxy for the domain similarities or (2) considered the primary target of representation. With (1), knowledge about musical similarity is assumed to be captured in user-item interactions. With (2), musical similarity is not be the aim--rather, something else, such as probabilities of user engagement, are the target of learning. (I do not wish to overstate the reliance on user-item interactions. It is well known that large entertainment services incorporate diverse sources of data in their recommender systems.)
 
-JazzGraph takes a slightly different approach. It assumes that the subject domain contains sufficiently rich information that similarity can be encoded by learning from the domain's structure alone. In short, it assumes that a graph of artists, songs and performances is sufficiently rich that it is possible to learn representation of the domain sufficient to generate informed recommendations. In this regard, it is arguably more like human cognition regarding musical recommendation than collaborative filtering: human experts know the music and recommend music based on musical features; they don't (or many would be ashamed to admit to) making recommendations simply based on popularity and other's taste.
+JazzGraph assumes that the subject domain contains sufficiently rich information that similarity can be encoded by learning from the domain's structure alone. In short, it assumes that a graph of artists, songs and performances is sufficiently rich that it is possible to learn representation of the domain sufficient to generate informed recommendations. In this regard, it is arguably more like human cognition regarding musical recommendation than collaborative filtering: human experts know the music and recommend music based on musical features; they don't make recommendations simply based on popularity and others' taste.
 (Again, I should not exaggerate the point: knowledge of who plays with whom is not the same as knowing a song or performance. Nevertheless, it is knowledge of the subject domain, rather than (for example) user preferences. Another perspective on the present work is as an investigation of whether domain knowledge encoded in user preferences aligns with domain knowledge encoded in collaboration.)
 
 ## Data
@@ -31,13 +31,13 @@ JazzGraph takes a slightly different approach. It assumes that the subject domai
 I model jazz collaboration as a heterogenous graph. Within the graph, there are three primary entity types:
 - Artists: people, primarily musicians who perform songs. Additionally, composers of songs are included in the graph even when they are not also performers. Examples include Duke Ellington and John Coltrane.
 - Songs: particular musical compositions that artists perform. Examples include "Take the A Train" and "My Favorite Things."
-- Performances: events where musicians (or a single musician) play a song. Live performances and studio recording sessions are both performances.
+- Performances: events where musicians (or a single musician) play a song. Live performances and studio recording sessions are both performances; John Coltrane's 1961 performance of "My Favorite Things," recorded on his eponymous album, is an example.
 
-(The data about performances is captured in the published recordings of performances, but it is important to distinguish a performance from a release. A release is a particular publication of a performance. A recording of a performance may be released and re-released numerous times, as, for example, when many record labels re-released their catalogs on CD in the 1980s and 1990s.)
+(Data about performances is captured in the published recordings of performances, but I distinguish a performance from a release. A release is a particular publication of a performance. A recording of a performance may be released and re-released numerous times, as, for example, when many record labels re-released their catalogs on CD in the 1980s and 1990s. The graph of jazz data captures individual performances and should not duplicate them when they have been released multiple times.)
 
 There are three relations that characterize the data and connect the node types:
-- artist -*performs*-> performance: In jazz, this usually means playing an instrument as part of the performance. Which instrument is played is a feature of the relation, when that information is include. (That is, it's an edge feature.)
-- performance -*performing*-> song: A performance is usually of some musical composition and this reflects which song is played in a performance.
+- artist -*performs*-> performance: In jazz, this usually means playing an instrument as part of the performance. Which instrument is played is a feature of the relation, when that information is include. (That is, it's an edge feature.) In the event that a performer has multiple roles, such as an instrument and vocals in a song, this is represented by two edges labeled, for example, "trumpet" and "lead vocals."
+- performance -*performing*-> song: A performance is usually of some musical composition and this reflects which song is played in a performance. A performance may be of multiple songs, as in medleys.
 - artist -*composed*-> song: Usually a song has a composer, the person or people who initially composed the music.
 
 The following image displays some connectedness typical of famous jazz albums in the same era. It depicts four famous jazz albums, "Speak No Evil", "Sunday at the Village Vanguard," "Inner Urge" and "The Blues and the Abstract Truth." These recordings, which are also used for qualitative evaluations, are summarized in Appendix C.
@@ -49,17 +49,17 @@ The following image displays some connectedness typical of famous jazz albums in
 
 To complete the project, it was necessary to extract the data about jazz collaborations from publicly available sources.
 
-[Musicbrainz](https://musicbrainz.org/) is a large public SQL database of musical recordings. It contains detailed information, including songs and performers, for many of the recordings in the catalog. It lacks two keys components needed for this project. A concept of a master recording or release that organizes re-released recordings under a single parent. (As an example, recordings released on CD in the 1980s and a vinyl release of the same from the 1950s do not share a single parent id.) Additionally, Musicbrainz does not have style or genre information which isolates jazz recordings from other genres. Musicbrainz is a publicly maintained database and therefore contains inconsistencies that result from imperfect governance of the data.
+[Musicbrainz](https://musicbrainz.org/) is the source of truth about the relations (edges) which characterize the graph. It is a large public SQL database of musical recordings and releases. It contains detailed information, including songs and performers, for many of the recordings in the catalog. It lacks two keys components needed for this project. A concept of a master recording or release that organizes re-released recordings under a single parent. (As an example, recordings released on CD in the 1980s and a vinyl release of the same from the 1950s do not share a single parent id.) Additionally, Musicbrainz does not have style or genre information which isolates jazz recordings from other genres. Musicbrainz is a publicly maintained database and therefore contains inconsistencies that result from imperfect governance of the data.
 
-[Discogs](https://www.discogs.com/) is makes available XML files of its data. There are two XML files in Discogs of interest for this project. First, the releases table in Discogs includes the a parent object which duplicate releases share. Second, it contains data on releases themselves, including artist, track listings, and genres. Discogs does not have the two major weaknesses of Musicbrainz.  However, the data is not organized into relational tables. Thus, performers associated with a recording are not linked to a table with unique entries for each artist; instead, a release will indicate who played on it with string data. Songs similarly have no relational information and composers are not part of the data schema. This means that it is difficult to reliably build the edges for the graph.
+[Discogs](https://www.discogs.com/) is the source of truth regarding which performances nodes in the graph are jazz. It makes available XML files of its data. There are two XML files in Discogs of interest for this project. First, the releases table in Discogs includes the a parent object which duplicate releases share. Second, it contains data on releases themselves, including artist, track listings, and genres. Discogs does not have the two major weaknesses of Musicbrainz.  However, the data is not organized into relational tables. Thus, performers associated with a recording are not linked to a table with unique entries for each artist; instead, a release will indicate who played on it with string data. Songs similarly have no relational information and composers are not part of the data schema. This means that it is difficult to reliably build the edges for the graph from Discogs data alone.
 
-To build the graph of jazz collaboration, we thus need to merge these two data sources by fuzzy matching on artist and title strings. In summary, this means identifying Discogs jazz master recordings and matching the earliest release in Musicbrainz with the same album title and artist name. This allows one to construct a table of jazz recordings in Musicbrainz and then use that database to construct the performing and performs edges.
+To build the graph of jazz collaboration, we thus need to merge these two data sources by fuzzy matching on artist and title strings. In summary, this means identifying Discogs jazz master recordings and matching the earliest release in Musicbrainz with the same album title and artist name. This allows one to construct a table of jazz recordings in Musicbrainz and then use that database to construct the composes, performing and performs edges.
 
 ### Process
 
 The process for combining these two datasets involved two key steps. First, it is necessary to identify a first release for each recording id. A recording id in Musicbrainz corresponds to a single distinct recorded performance which may appear on multiple different releases, including compilation and releases on different media. A release is typically an album in a medium and thus we can create a table of first releases by selecting distinct recording ids ordered by album. The first releases table includes all recording ids (Jazz or not) within Musicbrainz.
 
-Using a uniform normalization logic, I match entries in first releases and Discogs master releases by artist name and album name, using only those Discogs releases classified as Jazz. Discogs genre is a multi-label classification applied to releases, not individual tracks on them. There are numerous recordings classified as belonging to multiple genres, including Jazz. Some releases in Discogs are multi-label because they are compilation releases akin to "Great Recordings of the 1950s" which may span several genres of music; in such cases, Discogs applies a label to an album it applies to any track on the release. In other cases, multi-labeling occurs when tracks overlap multiple genres. It is surprisingly common, for example, that a recording is both "Electronic Music" and "Jazz." For simplicity, I used only Discogs releases with a single positive label "Jazz."
+Using a uniform normalization logic, I match entries in first releases and Discogs master releases by artist name and album name, using only those Discogs releases classified as Jazz. Discogs genre is a multi-label classification applied to releases, not individual tracks on them. There are numerous recordings classified as belonging to multiple genres, including Jazz. Some releases in Discogs are multi-label because they are compilation releases akin to "Great Recordings of the 1950s" which may span several genres of music; in such cases, Discogs applies a label to a release if it applies to any track on the release. In other cases, multi-labeling occurs when tracks overlap multiple genres. It is surprisingly common, for example, that a recording is both "Electronic Music" and "Jazz." For simplicity, I used only Discogs releases with a single positive label "Jazz."
 
 The matching between the two sources raises a number of common problems with string matching. Variations such as curly and straight quotes, capitalization, roman numerals and abbreviations represent some differences when matching strings. An additional variation occurs because metadata relating to the recording is sometimes included in the title.
 Among the issues of metadata, there parenthetical expressions like "(Legacy Edition)" "(5.0 Mix)" and "(Rudy van Gelder Edition)" which are basically meaningless to the song identity and not replicated across data sources. There are also parentheticals like "(Live at the Village Vanguard)" or "(Take 2)" which indicate something about the performance and may distinguish from another version in the same release. Finally, some songs include alternative titles such as "Manha de Carnaval (Black Orpheus)" or "Corcovado (Quiet Night of Quite Stars)" where an alternate title or chorus lyrics are included. Several iterations of normalization strategy were worked out to handle various cases. For example, John Coltrane's album "A Love Supreme" variously includes abbreviations, Roman/Arabic numerals and often includes "A Love Supreme: ..." in the title of each song.
@@ -67,9 +67,9 @@ Among the issues of metadata, there parenthetical expressions like "(Legacy Edit
 The normalization procedure here was also used downstream to match recordings in Spotify, where the addition of metadata in titles is especially common.
 
 Well before approaching a final version of the dataset, I added guardrails to prevent modifying the data with an unclean git tree. This means that the state of normalization can be seen by looking at the commit when the data was updated.
-See [`data_normalization.py`](../src/jazz_graph/clean/data_normalization.py) and [`test_data_normalization.py`](../tests/clean/test_data_normalization.py) for exact process and examples, most of which are extracted from actual cases.
+See [`data_normalization.py`](../src/jazz_graph/clean/data_normalization.py) for exact process and examples and [`test_data_normalization.py`](../tests/clean/test_data_normalization.py) for tests, most of which are extracted from actual cases.
 
-After matching all recording ids in Musicbrainz corresponding to a jazz release in Discogs, I create a one-many join table in the Musicbrainz database from Musicbrainz's recording id to Discogs id. An inner join (or suitable left/right join) on this table assures than only entries that were matched is included in query results, providing a convenient way to filter any Musicbrainz query to jazz releases.
+After matching all recording ids in Musicbrainz corresponding to a jazz release in Discogs, I create a one-many join table in the Musicbrainz database from Musicbrainz's recording id to Discogs id. An inner join (or suitable left/right join) on this table assures than only entries that were matched are included in query results, providing a convenient way to filter any Musicbrainz query to jazz releases.
 
 Because Musicbrainz is heavily normalized, it is difficult to describe in full detail the steps needed to join, e.g., performers with recordings, in Musicbrainz. Thus, I describe the conceptual structure of join below. The files in [`queries`]('../queries') represent sequences of updates to the database, which create views of the data for convenience in the steps described below. The queries to write the necessary graph entities are in [`create_parquet_tables.py`](../scripts/create_parquet_tables.py).
 
@@ -88,7 +88,7 @@ I discuss the specific features with each node in the training section below.
 
 ### Summary
 
-The above tables were written to parquet files and each file can be extracted with limited modification into a Pytorch Geometric heterogenous dataset. After extracting the data, I removed any isolated nodes, which correspond to performances without performer or song edges. I treated the graph as undirected.
+The above tables were written to parquet files and each file can be extracted with limited modification into a Pytorch Geometric heterogenous dataset. After extracting the data, I removed any isolated nodes, which correspond to performances without performer or song edges. I treated the graph as undirected. The following tables summarize the graph.
 
 | Node Type  |  Node Count  |
 |:--|-------------:|
@@ -138,9 +138,19 @@ One label available for supervised learning is the jazz sub-style information in
 Many recommendations systems use graphs, which are a natural extension of matrix factorizations problems in collaborative filtering. In those problems, an item and query have an edge between them if an appropriate interaction exists. For example, in movie recommendation, a user and a movie might be linked if the user gave the movie a positive review. In the graph context, the probability of a link between an item and query can be used to order items for recommendation. With this in mind, I also tried some link prediction tasks; two performances are similar if they share similar probability distributions over actual and hypothetical links. I investigated two potential link prediction tasks; first, performance-artist links, second, performance-album links. in both cases, the model also did poorly on the B-side experiment and recommendation task. But, the model was exceptionally good at finding the links.
 Leakage is a common problem in link prediction learning for graphs because information can "sneak" along edges in subtle ways, including reverse edges of undirected graphs.
 Because perfect prediction is often a symptom of leakage rather than model quality, I took care to confirm that there was not leakage to the development set.
-Leakage was not the source of the problem--the issue appears to be that certain links are just too easy to predict with enough information. (A common feature of our jazz graph is that two performances on the same album will share exactly the same artists, making the artists in one performance exceptional signal about the artists in another. Random samples of negative edges must be carried out very carefully to make the task informative enough to be challenging.) The combination of high performance on these training tasks but low performance on the downstream recommendation metrics suggests that the task is inappropriate to learning useful embeddings.
+Leakage was not the source of the problem--the issue appears to be that certain links are just too easy to predict with enough information. (A common feature of our jazz graph is that two performances on the same album will share exactly the same artists, making the artists in one performance exceptional signal about the artists in another. Random samples of negative edges must be carried out very carefully to make the task informative enough to be challenging.) The combination of high performance on these training tasks but low performance on the downstream recommendation metrics suggests that with random negative sampling edge prediction tasks are unable to learn useful embeddings.
 
 A self-supervised task for graph learning is also promising. In self-supervised learning tasks, a model is required to predict the graph structure itself. This is similar to token prediction tasks used to learn embeddings for words. For practical reasons, mostly relating to the code already engineered for the two supervised learning tasks, I decided to use a version of [SimCLR](https://arxiv.org/abs/2002.05709) for self-supervised learning. SimCLR was originally applied to image learning. A SimCLR model involves learning are representation $h$ of an entity one seeks to represent and a representation $z$ used for the training task. The training task in SimCLR involves created two augmented views of each sample and then learning to identify (1) which samples are augmentations of the same entity and (2) to spread the representations of different entities uniformly in the embedding space.
+
+The loss function for this learning task is normalized temperature scaled cross-entropy:
+$$
+\mathcal{L}_{i, j} = -\log\frac{
+    \exp(\text{sim}(z_i, z_j)/\tau)
+}{
+    \sum_{k=1}^{2n} {\small [k\neq i]}\exp(\text{sim}(z_i, z_j) / \tau)
+}
+$$
+Where $z_i, z_j$ are augmented pairs, $sim$ is cosine similarity and $[k\neq i]$ is an indicator variable such that $[k\neq i] \in \{0, 1\}$ and $[k\neq i] = 1$ if and only if $i \ne k$.
 
 I tried two different augmentation approaches. First, an edge ablation task where random edges are removed from the graph. Second, a shared album task where two performances should have similar representations if they are on the same album. I discuss these tasks more in the training section below.
 
@@ -166,11 +176,16 @@ Appendix A contains a descriptions of features and their distributions.
 
 I tried three tasks for training the SimCLR model, corresponding to different augmentation approaches. The first augmentation was edge ablation; each edge in the graph had a 20% chance of removal and the model needs to recognize that two differently augmented nodes are the same. The second augmentation matches performances of the same album to each other, which is a more directly semantic model of the nodes' similarity. (This perhaps stretches the concept of an augmentation, but the training process is essentially the same.) Finally, I tried a dual loss approach which required the model to do both tasks and applied a weighted loss.
 
+
+
 ## Recommendation
 
 Recommenders need to translate a collection of seed value into a collection of scored recommendations.
 
-The recommenders using the GNN representations compute the dot product of all performances' embeddings with the embeddings of the seed performances, creating an $n \times m$ matrix, $n$ is the number of known recordings, $m$ is the number of seed recommendations. Each row, then, represents a single recording and its similarities to all seed listing values. A score for each recording is generated by aggregating these similarity scores.
+The recommenders using the GNN representations compute the dot product of all performances' embeddings with the embeddings of the seed performances, creating an $n \times m$ matrix, $n$ is the number of known recordings, $m$ is the number of seed recommendations. Each row, then, represents a single recording and its similarities to all seeds. A score for each recording is generated by aggregating these similarity scores. $$
+    score(p_i) =  agg(\sum_{k=1}^{n}gnn(p_i)^\intercal gnn(p_k))
+    $$
+where $p$ is a performance, $gnn$ is the embedding function learned from the graph of jazz performances, artists and songs and $agg$ is an aggregation or pooling function.
 
 I experimented with three different aggregation functions: sum, max and softmax. Summation weights all performances in the seed value equally; conceptually, this can be seen as promoting recommendations which are like the majority of seeds. To clarify this effect, imagine that the embedding primarily characterize whether a song is bebop or modal jazz; then, if 80% of all seeds are bebop, we would expect bebop performances to score highly while modal performances score weakly, since the modal performances will be similar to only 20% of seeds and each seed is equally weighted. Max aggregation promotes performances which are highly similar to exactly one seed value. Conceptually, if some performances are avant-garde and avant-garde performances are highly similar to one another while others are hard bop and hard bop performances tend to be just somewhat similar to one another, max aggregation will have tendency to promote avant-garde recordings even if only a small proportion of seeds are avant-garde. Softmax aggregation takes each row of per-seed scores and weights it by the softmax of the row and then sums the score. The effect is up signaling performances that are highly similar to some seed value, and this may be seen as balancing the tendencies of max and sum aggregation.
 
@@ -180,7 +195,7 @@ In addition to the GNN base models, I wrote two baseline recommender systems for
 
 I constructed three measures of recommendation quality: novel recall, novelty, and a b-side experiment.
 
-The first two use a listener's Spotify history to generate recommendations and then examine the qualities of the recommendations. Publicly available, granular data representing user engagement with music is scarce. As a proxy for a broader listening histories, I used my own Spotify listening history. This dataset includes 2810 unique performances; Appendix D provides a brief summary of the most popular artists in the dataset, as measure by the name of the artist with the record in Spotifies metadata. With the same normalization process used to extract the dataset, the history is matched with artist, album and song title using against the Discogs sources. Each matched item is an eligible seed, and seeds were unweighted; for example, a performance listened to 100 times was weighted the same as a performance listened to once. I split the listening history into seed and holdout sets. Performances are split randomly by album, so that when two performances appear on the same album, they are in the same split. The reason for album splitting is that if two songs are on the same album, it is almost trivial to know that I should recommend any unseeded performances that share an album with a seeded performance. The task is significantly more challenging if the system needs to understand that performance from different albums, which are more likely to be disjoint in some features, are similar.
+The first two use a listener's Spotify history to generate recommendations and then examine the qualities of the recommendations. Publicly available, granular data representing user engagement with music is scarce. As a proxy for a broader listening histories, I used my own Spotify listening history. My listening history dataset includes 2810 unique jazz performances; Appendix D provides a brief summary of the most popular artists in the dataset, according to the name of the artist with the record in Spotify's metadata. (This is slightly different from an artist as conceived in the graph. Within the Spotify data, this treats "Miles Davis Quintet" and "Miles Davis" as distinct artists.) With the same normalization process used to extract the dataset, the history is matched with artist, album and song title using against the Discogs sources. Each matched item is an eligible seed, and seeds were unweighted; for example, a performance listened to 100 times was weighted the same as a performance listened to once. I split the listening history into seed and holdout sets. Performances are split randomly by album so that when two performances appear on the same album, they are in the same split. The reason for album splitting is that if two songs are on the same album, it is almost trivial to know that I should recommend any unseeded performances that share an album with a seeded performance. The task is more challenging if the system needs to understand that performances from different albums, which are more likely to be disjoint in some features, are similar.
 
 Novel recall is top-K recall on the held-out performances and is measures the relevance of the recommendations. We set K to a top 20% of ranked recommendations. Recall is an appropriate metric for this system. It measures the system's ability to detect relevance while not penalizing the system for indicating relevance outside the listener's history. Strong recall on held-out data suggests high relevance in the collection of recommendations, which is our target.  I also provide the familiar recall for all models, which indicates recall of seed performances in the top-K.
 
@@ -204,6 +219,12 @@ A third metric is the "B-side experiment." The B-side experiment splits performa
 | Match Album             | Instrument, Style | softmax   |   **0.518** |      **0.608**       |  0.804  |              0.548 |
 | Random Walk Baseline    | ---               | ---       |       0.194 |          0.202       |  0.523  |              0.132 |
 | Artist Weighted Baseline | ---              | ---       |       0.420 |          0.405       |  0.011  |              0        |
+
+The t-SNE below shows the performance emebedding space with seeds, recommendations and random samples for the recommendations based on the small sample of four albums discussed in the next section:
+
+![System Diagram](/documents/jazz_performance_embeddings.png)
+
+
 
 ### Qualitative Assessment
 
@@ -290,15 +311,15 @@ There are 20 different sub-styles in the data. Their relative frequencies are gi
 
 We see from the following table that many performances have no labels or more than one:
 | Number of labels | Percentage of Samples |
-|---|--------|
-| 0 | 0.240% |
-| 1 | 0.465% |
-| 2 | 0.227% |
-| 3 | 0.056% |
-| 4 | 0.009% |
-| 5 | 0.002% |
-| 6 | 0.001% |
-| 7 | 0.000% |
+|---|--------:|
+| 0 | 24.0% |
+| 1 | 46.5% |
+| 2 | 22.7% |
+| 3 | 5.6% |
+| 4 | 0.9% |
+| 5 | 0.2% |
+| 6 | 0.1% |
+| 7 | 0.0% |
 
 There were over three hundred instruments in the Musicbrainz data. I categorized some rare and similar instruments into groups; all groups are mutually exclusive.
 
