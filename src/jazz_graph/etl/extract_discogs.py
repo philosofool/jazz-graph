@@ -391,6 +391,9 @@ class InMemDiscogs:
         release_ids = self._norm_title_to_release[norm_title]
         return [self._release_data[id] for id in release_ids]
 
+    def normalize(self, title: str) -> str:
+        return normalize_title(title)
+
     def _process_releases(self):
         with jsonlines.open(self.release_path) as f:
             for release in f:
@@ -453,6 +456,13 @@ class MatchDiscogs:
 
     def songs_on(self, album) -> set:
         """Return the songs on this album."""
+        import warnings
+        warnings.warn(
+            "songs_on() is deprecated and will be removed. "
+            "Jazz labeling is now determined at the release group level.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         norm_album = self.normalize(album)
         tracklist = self.discogs.tracklist()
         matched_songs = tracklist.get(norm_album, set())
@@ -460,21 +470,18 @@ class MatchDiscogs:
 
     def match_artist_album(self, album, artist) -> dict:
         """Return the discog record matching the input artist and album title."""
-        norm_artist = self.normalize(artist)
-        norm_album = self.normalize(album)
-        album_matches = self.discogs.get_albums_matching_title(norm_album)
+        album_matches = self.discogs.get_albums_matching_title(album)
         for album in album_matches:
             artists = {self.normalize(artist['name']) for artist in album['artists']}
             # In the extremely rare instance that that same artist produced two albums by the same name
             # this would return the first match.
-            if norm_artist in artists:
+            if self.normalize(artist) in artists:
                 return album
         return {}
 
-    @staticmethod
-    def normalize(value: str) -> str:
+    def normalize(self, value: str) -> str:
         """Normalize an input string."""
-        return normalize_title(value)
+        return self.discogs.normalize(value)
 
     def matching_discog(self, row: list | tuple) -> dict:
         """Get the discog record matching row data.
@@ -484,14 +491,5 @@ class MatchDiscogs:
         row:
             A sequence with strings song, album artist as the first three elements.
         """
-        song, album, artist = row[2:5]
-
-        # check this matches a title and song of a jazz recording.
-        matched_songs = self.songs_on(album)
-        if not matched_songs:
-            return {}
-        song_norm = self.normalize(song)
-        if not song_norm in matched_songs:
-            return {}
-        # if so, return the matching discog record.
+        _, album, artist = row[2:5]
         return self.match_artist_album(album, artist)

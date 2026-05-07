@@ -1,4 +1,5 @@
-CREATE OR REPLACE VIEW compositions AS
+DROP VIEW IF EXISTS compositions;
+CREATE MATERIALIZED VIEW compositions AS
 	SELECT
 		l_artist_work.entity0 as composer_id,
 		work.id as work_id,

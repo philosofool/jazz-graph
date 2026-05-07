@@ -6,6 +6,7 @@ neo4j
 numpy
 pandas
 psycopg[binary]
+pytorch-ignite
 pyarrow
 pytest
 scikit-learn

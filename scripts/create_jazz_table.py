@@ -11,9 +11,10 @@ import pandas as pd
 
 from jazz_graph.etl.extract_discogs import InMemDiscogs, is_jazz_album, MatchDiscogs
 from jazz_graph.etl.load import LoadData
-from jazz_graph.schema.sql import Column, ForeignKey, PrimaryKey, TableSchema
+from jazz_graph.data.schema.sql import Column, ForeignKey, PrimaryKey, TableSchema
 from jazz_graph.clean.string_date import date_precision, clean_string_date
 from jazz_graph.clean.data_normalization import normalize_title
+from jazz_graph.training.logging import insert_current_migration, is_working_tree_dirty, current_migration_name, is_current_commit_migrated
 
 
 class ProcessRows:
@@ -173,17 +174,18 @@ def test_deduplicate():
     assert not any(('_norm' in col for col in dedup.columns)), "Should drop normalized columns."
 
 
-
 if __name__ == '__main__':
+    if is_working_tree_dirty():
+        raise Exception("It is illegal to run this in a dirty state. Stash or commit all changes and re-run.")
+    if is_current_commit_migrated(None, None):
+        raise Exception("This commit has already been migrated to the db. Did you mean to make changes?")
     test_deduplicate()
-    jazz_data_path = '/workspace/local_data/jazz_data_discogs.csv'
-    try:
-        jazz_data = pd.read_csv(jazz_data_path)
-        print("Loaded cached csv of jazz data.")
-    except FileNotFoundError:
-        print("No cached data. Creating jazz data and caching.")
-        jazz_data = create_jazz_data()
-        jazz_data.to_csv(jazz_data_path, index=False)
+
+    jazz_data_path = f'/workspace/local_data/{current_migration_name()}.csv'
+
+    print("No cached data. Creating jazz data and caching.")
+    jazz_data = create_jazz_data()
+    jazz_data.to_csv(jazz_data_path, index=False)
 
     jazz_data = deduplicate(jazz_data)
 
@@ -211,9 +213,21 @@ if __name__ == '__main__':
         conn.autocommit = False
         cursor = conn.cursor()
 
-        discogs_jazz_loader.create_table(cursor)
+        cursor.execute("DROP VIEW IF EXISTS jazz_recordings;")
+        recording_to_discog_loader.drop_table(cursor)
+
+        discogs_jazz_loader.create_table(cursor, drop_if_exists=True)
         discogs_jazz_loader.load_data(discogs_jazz, cursor)
 
         recording_to_discog_loader.create_table(cursor)
         recording_to_discog_loader.load_data(recording_to_discogs_data, cursor)
+        insert_current_migration(cursor)
+        create_jazz_recordings = """
+        CREATE OR REPLACE VIEW jazz_recordings AS
+        SELECT discogs_release.id as discogs_id, recording_first_release.*
+        FROM discogs_release
+        JOIN discogs_release_to_recording AS dr2r ON discogs_release.id = dr2r.discogs_id
+        JOIN recording_first_release ON recording_first_release.recording_id = dr2r.recording_id;
+        """
+        cursor.execute(create_jazz_recordings)
         conn.commit()
