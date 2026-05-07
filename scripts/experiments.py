@@ -83,6 +83,7 @@ def create_spotify_datasets(directory) -> Iterable:
             x = name.startswith('StreamingHistory_musi')
             y = name.startswith('Streaming_History_Audio')
             return y
+            # TODO: not in this function, but work out how to make this go for your friends.
             return x or y
 
         histories = [file for file in datadir.iterdir() if file_name_is_history(file.name)]
