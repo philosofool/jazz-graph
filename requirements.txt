@@ -11,3 +11,6 @@ pyarrow
 pytest
 scikit-learn
 seaborn
+torch-geometric
+neo4j
+psycopg[binary]
