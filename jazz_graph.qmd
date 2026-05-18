@@ -1,3 +1,28 @@
+---
+title: "JazzGraph"
+subtitle: "A Graph Neural Network for Jazz Musical Recommendations"
+author:
+  - author: "S. J. Lenhart"
+    affiliations:
+      - name: "College of Information Science, University of Arizona"
+description: "A full recommendation system, including data pipeline, graph construction, self-supervised graph neural network learn, and recommendations system."
+format:
+   html:
+    code-tools: true
+    code-overflow: wrap
+    embed-resources: true
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    theme: flatly
+editor: visual
+execute:
+  warning: false
+  echo: false
+  message: false
+  eval: true
+jupyter: python3
+---
 # Jazz Graph
 
 ## System Architecture
@@ -310,6 +335,7 @@ There are 20 different sub-styles in the data. Their relative frequencies are gi
 | Jazz-Rock          | 0.75% |
 
 We see from the following table that many performances have no labels or more than one:
+
 | Number of labels | Percentage of Samples |
 |---|--------:|
 | 0 | 24.0% |
