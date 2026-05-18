@@ -130,3 +130,5 @@ local_data/
 notebooks/sandbox.ipynb
 experiments/
 tests/test_pyg_data
+
+/.quarto/

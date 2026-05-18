@@ -9,6 +9,7 @@ WORKDIR /workspace
 RUN apt-get update && apt-get install -y \
     git curl vim build-essential sudo \
     libpq-dev postgresql-client \
+    gdebi-core wget \
     && rm -rf /var/lib/apt/lists/*
 
 RUN TORCH_VERSION=$(/opt/conda/bin/python -c "import torch; print(torch.__version__)") && \
@@ -16,10 +17,17 @@ RUN TORCH_VERSION=$(/opt/conda/bin/python -c "import torch; print(torch.__versio
       torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric \
       -f https://data.pyg.org/whl/torch-${TORCH_VERSION}.html
 
+# Install Quarto
+RUN QUARTO_VERSION=1.6.42 && \
+    wget -q "https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/quarto-${QUARTO_VERSION}-linux-amd64.deb" -O /tmp/quarto.deb && \
+    gdebi --non-interactive /tmp/quarto.deb && \
+    rm /tmp/quarto.deb
+
 # Install Python dependencies
 COPY requirements.txt /tmp/requirements.txt
 # RUN pip install --no-cache-dir -r /tmp/requirements.txt || true
 RUN /opt/conda/bin/python -m pip install --no-cache-dir -r /tmp/requirements.txt || true
+
 
 
 # Create a non-root user (UID 1000 matches typical host user)
