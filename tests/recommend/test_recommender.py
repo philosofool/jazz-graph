@@ -38,10 +38,6 @@ class TestLookupRecordings:
         np.testing.assert_array_equal(lookup.mask_data_listens(np.array([102])), [False, True])
         np.testing.assert_array_equal(lookup.mask_data_listens(np.array([103])), [False, False])
 
-    def test_mask_node_listens(self):
-        data = pd.DataFrame({'ids': [1, 2]}, index=[101, 102])
-        lookup = LookupRecordings(data)
-
     def test_from_hetero_data(self):
         data = HeteroData()
         data['performance'].x = torch.tensor([

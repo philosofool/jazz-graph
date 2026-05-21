@@ -73,10 +73,6 @@ class LookupRecordings:
     def mask_data_listens(self, listens: list[int] | np.ndarray) -> np.ndarray[tuple[int], np.dtype[np.bool_]]:
         return self.data.index.isin(listens)
 
-    def mask_node_listens(self, listens: list[int] | np.ndarray) -> np.ndarray[tuple[int], np.dtype[np.bool_]]:
-        mask = self.mask_data_listens(listens)
-        return self.data['ids']
-
     def lookup_recording_ids(self, indexes: np.ndarray) -> np.ndarray:
         """Get recording ids from a collection of node indexes."""
         return self.data.index[indexes].to_numpy()
