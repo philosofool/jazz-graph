@@ -32,13 +32,12 @@ from jazz_graph.training.logging import (
     ExperimentLogger,
     load_model
 )
-from jazz_graph.data.graph_builder.graph_builder import CreateTensors, prune_isolated_nodes, make_jazz_data
+from jazz_graph.data.graph_builder.make_jazz import JazzDataStore, make_jazz_graph
 from jazz_graph.model.model import JazzModel, LinkPredictionModel, NodeClassifier
 from jazz_graph.training.logging import plot_logs
 from jazz_graph.training.views import MatchAlbumAugmentation, performance_album_map
 from jazz_graph.training.loss import nt_xent_loss_with_masking
 from jazz_graph.training.loop import NeighborLoaderWithJitter, UnsupervisedGNNTrainingLogic, UnsupervisedGNNTrainingLogicMatchAlbum, binary_output_transform, console_logging, log_experiment_handler, run_evaluator_handler, save_checkpoint_handler, save_embeddings_handler, console_logging_self_supervised
-
 
 
 def make_album_match_trainer(model, optimizer, experiment_logger: ExperimentLogger):
@@ -154,8 +153,7 @@ def train_indecies(mask):
 def make_analyze_embeddings(models_dir) -> Callable:
 
     assert os.path.exists(models_dir)
-    create = CreateTensors(models_dir)
-    data = make_jazz_data(create)
+    data = make_jazz_graph(JazzDataStore(models_dir))
 
     def analyze(engine, model):
         analyze_model_embeddings(model, data)
@@ -168,8 +166,7 @@ if __name__ == '__main__':
     seed_everything(random_seed)
     models_dir = '/workspace/local_data/graph_parquet'
     assert os.path.exists(models_dir)
-    create = CreateTensors(models_dir)
-    data = make_jazz_data(create)
+    data = make_jazz_graph(JazzDataStore(models_dir))
     import torch
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
