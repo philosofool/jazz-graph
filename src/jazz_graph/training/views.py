@@ -67,17 +67,8 @@ def drop_edge_augmentation(graph: HeteroData, dst_graph, drop_edge_prob: float =
     drop_edge_from_masks(graph, edge_masks, dst_graph)
 
 
-def drop_random_nodes_and_edges(data: HeteroData, drop_edge_prob: float = .5):
+def drop_random_edges(data: HeteroData, drop_edge_prob: float = .5):
     out = data.clone()
     drop_edge_augmentation(data, out, drop_edge_prob=drop_edge_prob)
-    # drop_node_augmentation(data, out)  # This would be complex: graphs need to align their node indecies in loss.
+
     return out
-
-
-def drop_node_augmentation(src_graph: HeteroData, dst_graph: HeteroData, drop_node_prob: float = .1):
-    node_types, edge_types = src_graph.metadata()
-    masks = {
-        node_type: torch.rand(src_graph[node_type].num_nodes) > drop_node_prob
-        for node_type in node_types
-    }
-    prune_graph_from_masks(src_graph, masks)

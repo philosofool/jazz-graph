@@ -27,7 +27,7 @@ from jazz_graph.etl.transforms import map_array, map_by_index
 from jazz_graph.metrics.embedding_metrics import AlignmentLoss, UniformityLoss, MultiPositiveAlignment, EmbeddingStd
 from jazz_graph.model.model import UnsupervisedJazzModel
 from jazz_graph.training.inspect import analyze_model_embeddings
-from jazz_graph.training.views import drop_random_nodes_and_edges
+from jazz_graph.training.views import drop_random_edges
 from jazz_graph.training.logging import (
     ExperimentLogger,
     load_model
@@ -105,7 +105,7 @@ def make_trainer(model, optimizer, experiment_logger: ExperimentLogger):
         model,
         optimizer,
         experiment_config['temperature'],
-        augment=lambda data: drop_random_nodes_and_edges(data, experiment_config['drop_edge_prob'])
+        augment=lambda data: drop_random_edges(data, experiment_config['drop_edge_prob'])
         # make_match_album_augmentation(models_dir)
     )
 

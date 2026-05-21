@@ -30,7 +30,7 @@ from jazz_graph.metrics.embedding_metrics import AlignmentLoss, UniformityLoss, 
 from jazz_graph.model.model import UnsupervisedJazzModel
 from jazz_graph.training.inspect import analyze_model_embeddings
 from jazz_graph.training.loop import UnsupervisedGNNTrainingLogicMatchAlbum, binary_output_transform, console_logging_self_supervised, log_experiment_handler, run_evaluator_handler, save_checkpoint_handler, save_embeddings_handler
-from jazz_graph.training.views import drop_random_nodes_and_edges
+from jazz_graph.training.views import drop_random_edges
 from jazz_graph.training.logging import (
     ExperimentLogger,
     load_model
@@ -105,7 +105,7 @@ def make_trainer(model, optimizer, experiment_logger: ExperimentLogger):
         model,
         optimizer,
         experiment_config['temperature'],
-        augment=lambda data: drop_random_nodes_and_edges(data, experiment_config['drop_edge_prob'])
+        augment=lambda data: drop_random_edges(data, experiment_config['drop_edge_prob'])
         # make_match_album_augmentation(models_dir)
     )
 
@@ -277,7 +277,7 @@ if __name__ == '__main__':
     elif experiment_config['training_task'] == 'match_album':
         trainer = make_album_match_trainer(model, optimizer, experiment_logger)
     elif experiment_config['training_task'] == 'dual_loss':
-        loop = DualLossUnsupervisedTraining(model, optimizer, experiment_config['temperature'], drop_random_nodes_and_edges)
+        loop = DualLossUnsupervisedTraining(model, optimizer, experiment_config['temperature'], drop_random_edges)
         loop.alpha = experiment_config['alpha']  # Hack.
         trainer = loop.trainer(experiment_logger)
     else:
