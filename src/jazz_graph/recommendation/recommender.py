@@ -160,6 +160,14 @@ class InferenceRecommender(Recommender):
             return (weights * scores).sum(dim=-1)
         raise ValueError("Unsupported pooling.")
 
+    def _embeddings(self):
+        try:
+            return self._embeds
+        except AttributeError:
+            x_dict, edge_index_dict = self.data.x_dict, self.data.edge_index_dict
+            self._embeds = self.model(x_dict, edge_index_dict, self.data)
+        return self._embeds
+
     @torch.no_grad()
     def get_recommendations(self, listens: list[int]) -> Recommendations:
         """Get recommendations based on input recording ids.
@@ -172,7 +180,7 @@ class InferenceRecommender(Recommender):
         """
         self.model.eval()
         x_dict, edge_index_dict = self.data.x_dict, self.data.edge_index_dict
-        performance_embed = self.model(x_dict, edge_index_dict, self.data)['performance']
+        performance_embed = self._embeddings()['performance']
 
         familiar_nodes = self.lookup_recordings.lookup_node_index(listens)
         familiar_perf = performance_embed[familiar_nodes]
