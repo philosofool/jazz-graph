@@ -437,12 +437,6 @@ class RandomWalkRecommender(Recommender):
         return walks
 
 
-def filter_valid_walks(walks: torch.Tensor) -> torch.Tensor:
-    """Remove walks that hit a dead end (destination == -1)."""
-    return walks[walks[:, 1] != -1]
-
-
-
 class ArtistWeightedRecommender(Recommender):
     """Prioritize artists who appear in the inputs."""
     def __init__(self, recording_traits: pd.DataFrame):
