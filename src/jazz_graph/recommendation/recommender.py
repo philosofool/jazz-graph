@@ -3,11 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, TypeAlias
 import torch
 from torch import nn
-import torch.nn.functional as F
 import pandas as pd
 import numpy as np
-from numpy.typing import ArrayLike
-from collections.abc import Callable
 
 from jazz_graph.data.graph_builder.make_jazz import JazzDataStore
 from jazz_graph.training.logging import load_embeddings

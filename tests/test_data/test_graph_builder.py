@@ -3,8 +3,6 @@ import numpy as np
 import torch
 from jazz_graph.data.graph_builder.graph_builder import prune_isolated_nodes, torch_values, torch_index
 
-from jazz_graph.data.graph_transforms import map_to_new_node_index
-
 def test_torch_values():
     df = pd.DataFrame({'a': [1., 2., 3], 'b': [4., 5., 6.]})
     expected = torch.tensor([[1., 4], [2, 5], [3, 6]])

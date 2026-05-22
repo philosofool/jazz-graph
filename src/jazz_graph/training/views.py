@@ -2,7 +2,7 @@
 
 
 import torch
-from jazz_graph.data.graph_transforms import drop_edge_from_masks, prune_graph_from_masks
+from jazz_graph.data.graph_transforms import drop_edge_from_masks
 
 from torch_geometric.data import HeteroData
 from torch_cluster import random_walk
