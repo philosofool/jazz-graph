@@ -3,7 +3,7 @@
 Most music recommendation systems ask what other users like you enjoy. [JazzGraph](http://philosofool.github.io/jazz-graph) asks Thelonious Monk.
 By modeling the social network relationships among jazz musicians, JazzGraph reveals stylistically similar jazz performances that musicians themselves chose.
 
-Please see the complete write-up at [https://philosofool.github.io/jazz-graph] for details on the project.
+Please see the complete write-up at https://philosofool.github.io/jazz-graph for details on the project.
 
 ## Files
 
