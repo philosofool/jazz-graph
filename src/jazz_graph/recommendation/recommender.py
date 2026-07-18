@@ -78,6 +78,7 @@ class LookupRecordings:
         return self.data.index.isin(listens)
 
     def mask_node_listens(self, listens: list[int] | np.ndarray) -> np.ndarray[tuple[int], np.dtype[np.bool_]]:
+        raise NotImplementedError("This mask is unused and the code has not been validated.")
         mask = self.mask_data_listens(listens)
         return self.data['ids']
 
