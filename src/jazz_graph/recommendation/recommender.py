@@ -146,6 +146,7 @@ class InferenceRecommender(Recommender):
             if not hasattr(node, 'n_id'):
                 node.n_id = torch.arange(node.x.size(0))
         self.pooling = pooling
+        self._cached_embeddings = None
 
     def pool_scores(self, scores: torch.Tensor) -> torch.Tensor:
         if self.pooling == 'sum':
@@ -157,6 +158,13 @@ class InferenceRecommender(Recommender):
             weights = torch.softmax(scores, dim=-1)
             return (weights * scores).sum(dim=-1)
         raise ValueError("Unsupported pooling.")
+
+    def _embed(self, x_dict, edge_index_dict, data):
+        if self._cached_embeddings is not None:
+            return self._cached_embeddings
+        embeddings = self.model(x_dict, edge_index_dict, self.data)['performance']
+        self._cached_embeddings = embeddings
+        return embeddings
 
     @torch.no_grad()
     def get_recommendations(self, listens: list[int]) -> Recommendations:
@@ -170,7 +178,7 @@ class InferenceRecommender(Recommender):
         """
         self.model.eval()
         x_dict, edge_index_dict = self.data.x_dict, self.data.edge_index_dict
-        performance_embed = self.model(x_dict, edge_index_dict, self.data)['performance']
+        performance_embed = self._embed(x_dict, edge_index_dict, self.data)
 
         familiar_nodes = self.lookup_recordings.lookup_node_index(listens)
         familiar_perf = performance_embed[familiar_nodes]
