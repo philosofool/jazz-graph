@@ -3,6 +3,8 @@
 import pandas as pd
 import psycopg
 
+import warnings
+
 def fetch_recording_traits(
         start: pd.Timestamp | None = None, end: pd.Timestamp | None = None, use_proto: bool = False) -> pd.DataFrame:
     """Helper function to retrive known jazz recordings in MusicBrainz.
@@ -35,8 +37,13 @@ def fetch_recording_traits(
 def fetch_artist_performance_traits(
         start: pd.Timestamp | None = None, end: pd.Timestamp | None = None, use_proto: bool = False
 ):
+    """Maps performer roles to recordings, for example who played what instrument in a performance."""
 
     # FIXME: needs composers too.
+    warnings.warn(
+        """fetch_artist_performance_traits does not include composers;
+        use caution if implementing core functionality."""
+    )
     sql = """
         SELECT
             recording_to_performer.*
@@ -58,6 +65,20 @@ def fetch_artist_performance_traits(
     return query_result
 
 def fetch_artist_traits(start: pd.Timestamp | None = None, end: pd.Timestamp | None = None, use_proto: bool = False):
+    """Helper function to retrive known jazz artists in MusicBrainz.
+
+    start:
+        Earliest release date to include in returned records. Inclusive
+    end:
+        Latest release data to include in returned records. Exclusive.
+    use_proto:
+        Return records from 1957 to 1962 (inclusive.)
+
+    Returns
+    -------
+    The data in jazz_recorings for artists.
+
+    """
     sql =  """
             WITH relevant_jazz AS (
                 SELECT
@@ -92,6 +113,20 @@ def fetch_artist_traits(start: pd.Timestamp | None = None, end: pd.Timestamp | N
     # return artist_traits.set_index('artist_id')
 
 def fetch_song_traits(start: pd.Timestamp | None = None, end: pd.Timestamp | None = None, use_proto: bool = False):
+    """Helper function to retrive known jazz songs in MusicBrainz.
+
+    start:
+        Earliest release date to include in returned records. Inclusive
+    end:
+        Latest release data to include in returned records. Exclusive.
+    use_proto:
+        Return records from 1957 to 1962 (inclusive.)
+
+    Returns
+    -------
+    The data in jazz_recorings.
+
+    """
     sql = """
         WITH jazz_compositions AS (
         SELECT DISTINCT
