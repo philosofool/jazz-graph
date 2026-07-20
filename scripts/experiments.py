@@ -9,13 +9,17 @@ from torch_geometric.data import HeteroData
 
 from jazz_graph.data.fetch import fetch_recording_traits
 from jazz_graph.model.model import UnsupervisedJazzModel
-from jazz_graph.recommendation.recommender import LookupRecordings, RandomWalkRecommender, ArtistWeightedRecommender
+from jazz_graph.recommendation.recommender import LookupRecordings, RandomWalkRecommender, ArtistWeightedRecommender, Recommender
 from jazz_graph.recommendation.experiment import BSideExperiment, SpotifyExperiment
 from jazz_graph.recommendation.recommender import InferenceRecommender
 from jazz_graph.training.logging import load_model
 
 RANDOM_SEED = 51342
 SPOTIFY_DATA_PATH = '/workspace/local_data/spotify_dataset'
+GRAPH_DATA_PATH = '/workspace/local_data/graph_parquet'
+
+# TODO: Find this programatically by filtering runs and getting the best metapath2vec run.
+METAPATH2VEC_RUN_DIR: str | None = '/workspace/experiments/2026-07-19_18-24-03_metapath2vec_graph_parquet'
 
 def make_jazz_graph_from_config(config) -> HeteroData:
     graph_data_function = config.get('graph_data_function')
@@ -77,6 +81,8 @@ def create_spotify_datasets(directory) -> Iterable:
         if not path.is_dir():
             continue
         datadir = next(path.iterdir())
+        if not datadir.is_dir():
+            continue
         print(datadir)
 
         def file_name_is_history(name: str):
@@ -144,6 +150,25 @@ def run_experiments():
         experiment_config.pop('recommender_pooling')
 
 
+def metapath2vec_experiment(run_dir: str, recording_traits: pd.DataFrame, models_dir: str = GRAPH_DATA_PATH):
+    """Generate a baseline from a trained MetaPath2Vec run.
+
+    `run_dir` is a run directory produced by scripts/training/metapath2vec.py,
+    e.g. via ExperimentLogger; it contains the embeddings.pt saved by
+    ExperimentLogger.save_metapath2vec_embeddings.
+    """
+    recommender = Recommender.from_path(run_dir, models_dir)
+    config = {'model': 'MetaPath2VecRecommender', 'run_dir': run_dir}
+    log_dir = '/workspace/experiments/official_metapath2vec'
+    b_side_experiment(recommender, recording_traits, config, log_dir=log_dir)
+
+    for spotify_path, spotify_data in create_spotify_datasets(SPOTIFY_DATA_PATH):
+        if not spotify_data:
+            continue
+        spotify_experiment = SpotifyExperiment(recording_traits, spotify_data, seed=RANDOM_SEED, log_dir=log_dir)
+        spotify_experiment.run_experiment(recommender, config)
+
+
 def baseline_experiments():
     from time import sleep
     experiment_config = get_experiment_config('/workspace/experiments/2026-03-31_17-39-18_gnn_simCLR_graph_parquet')
@@ -160,6 +185,7 @@ def baseline_experiments():
     simple_artist_config = {'model': "ArtistWeightedRecommender"}
     b_side_experiment(simple_artist_recommender, recording_traits, simple_artist_config, log_dir='/workspace/experiments/official_simple_artist')
 
+
     for spotify_path, spotify_data in create_spotify_datasets(SPOTIFY_DATA_PATH):
         if not spotify_data:
             continue
@@ -171,5 +197,8 @@ def baseline_experiments():
 
 if __name__ == '__main__':
     print("Running experiments.")
-    run_experiments()
-    baseline_experiments()
+    # run_experiments()
+    # baseline_experiments()
+    if METAPATH2VEC_RUN_DIR:
+        recording_traits = fetch_recording_traits(use_proto=False).set_index('recording_id')
+        metapath2vec_experiment(METAPATH2VEC_RUN_DIR, recording_traits)
