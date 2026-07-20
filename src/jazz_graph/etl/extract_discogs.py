@@ -1,11 +1,7 @@
 """There are a few starts her"""
 
 from collections import defaultdict
-import time
-import threading
-import discogs_client
 import gzip
-import xml.etree.ElementTree as ET
 from lxml import etree    # pyright: ignore [reportAttributeAccessIssue]
 import jsonlines
 from pathlib import Path

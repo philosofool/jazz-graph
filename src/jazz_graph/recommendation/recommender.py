@@ -3,13 +3,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, TypeAlias
 import torch
 from torch import nn
-import torch.nn.functional as F
 import pandas as pd
 import numpy as np
-from numpy.typing import ArrayLike
-from collections.abc import Callable
 
-from jazz_graph.data.graph_builder.graph_builder import CreateTensors, make_jazz_data
+from jazz_graph.data.graph_builder.make_jazz import JazzDataStore
 from jazz_graph.training.logging import load_embeddings
 
 if TYPE_CHECKING:
@@ -76,10 +73,6 @@ class LookupRecordings:
 
     def mask_data_listens(self, listens: list[int] | np.ndarray) -> np.ndarray[tuple[int], np.dtype[np.bool_]]:
         return self.data.index.isin(listens)
-
-    def mask_node_listens(self, listens: list[int] | np.ndarray) -> np.ndarray[tuple[int], np.dtype[np.bool_]]:
-        mask = self.mask_data_listens(listens)
-        return self.data['ids']
 
     def lookup_recording_ids(self, indexes: np.ndarray) -> np.ndarray:
         """Get recording ids from a collection of node indexes."""
@@ -443,12 +436,6 @@ class RandomWalkRecommender(Recommender):
         if return_intermediate:
             return walks, inter_nodes
         return walks
-
-
-def filter_valid_walks(walks: torch.Tensor) -> torch.Tensor:
-    """Remove walks that hit a dead end (destination == -1)."""
-    return walks[walks[:, 1] != -1]
-
 
 
 class ArtistWeightedRecommender(Recommender):

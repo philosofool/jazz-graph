@@ -2,7 +2,6 @@ from __future__ import annotations
 import inspect
 import json
 import jsonlines
-import os
 from datetime import datetime
 from pathlib import Path
 import subprocess
