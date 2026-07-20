@@ -11,8 +11,33 @@ from jazz_graph.recommendation.recommender import ArtistWeightedRecommender, Inf
 import pytest
 
 class TestLookupRecordings:
-    # def test_from_path(self):
-    #     ...
+    def test_from_path(self, tmp_path):
+        performances = pd.DataFrame({
+            'recording_id': [100, 101, 102],
+            'release_date': pd.to_datetime(['2000', '1956', '1976']),
+            'release_group_id': [200, 201, 202],
+        })
+        artists = pd.DataFrame({'name': [1, 2]})
+        songs = pd.DataFrame({'title': [1, 2]})
+        # Row 1 (recording_id 101) has no edges at all, so make_jazz_graph
+        # prunes it as an isolated node. Row 2 (recording_id 102) then shifts
+        # down to node index 1 in the constructed graph -- from_path must
+        # reflect that post-prune index, not its raw parquet row position (2).
+        performance_artist_edges = pd.DataFrame({'artist_id': [0, 1], 'recording_id': [0, 2]})
+        performance_song_edges = pd.DataFrame({'recording_id': [0, 2], 'work_id': [0, 1]})
+        song_artist_edges = pd.DataFrame({'artist_id': [0, 1], 'work_id': [0, 1]})
+
+        performances.to_parquet(tmp_path / 'performance_nodes.parquet', index=True)
+        artists.to_parquet(tmp_path / 'artist_nodes.parquet', index=True)
+        songs.to_parquet(tmp_path / 'song_nodes.parquet', index=True)
+        performance_artist_edges.to_parquet(tmp_path / 'performance_artist_edges.parquet', index=True)
+        performance_song_edges.to_parquet(tmp_path / 'performance_song_edges.parquet', index=True)
+        song_artist_edges.to_parquet(tmp_path / 'song_artist_edges.parquet', index=True)
+
+        lookup = LookupRecordings.from_path(tmp_path)
+
+        np.testing.assert_array_equal(lookup.data.index.to_numpy(), [100, 102])
+        np.testing.assert_array_equal(lookup.data['ids'].to_numpy(), [0, 1])
 
     def test_lookup_node_index(self):
         data = pd.DataFrame({'ids': [1, 2]}, index=[101, 102])
