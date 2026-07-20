@@ -8,11 +8,27 @@ from torch_geometric.transforms import ToUndirected
 
 from jazz_graph.model.model import JazzModel
 from jazz_graph.recommendation.recommender import ArtistWeightedRecommender, InferenceRecommender, LookupRecordings, PredictLinkRecommender
+import jazz_graph.recommendation.recommender as recommender_module
 import pytest
 
 class TestLookupRecordings:
-    # def test_from_path(self):
-    #     ...
+    def test_from_path(self, tmp_path, monkeypatch):
+        performances = pd.DataFrame({'recording_id': [101, 102, 103]})
+        performances.to_parquet(tmp_path / 'performance_nodes.parquet', index=True)
+
+        def boom(*args, **kwargs):
+            raise AssertionError(
+                "LookupRecordings.from_path used the deprecated CreateTensors; "
+                "it should build the lookup via graph_builder.make_jazz instead."
+            )
+        # CreateTensors is deprecated: from_path must not depend on it, whether
+        # or not it remains importable from graph_builder.
+        monkeypatch.setattr(recommender_module, 'CreateTensors', boom, raising=False)
+
+        lookup = LookupRecordings.from_path(tmp_path)
+
+        np.testing.assert_array_equal(lookup.data.index.to_numpy(), [101, 102, 103])
+        np.testing.assert_array_equal(lookup.data['ids'].to_numpy(), [0, 1, 2])
 
     def test_lookup_node_index(self):
         data = pd.DataFrame({'ids': [1, 2]}, index=[101, 102])

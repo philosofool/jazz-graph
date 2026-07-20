@@ -9,7 +9,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 from collections.abc import Callable
 
-from jazz_graph.data.graph_builder.graph_builder import CreateTensors
+from jazz_graph.data.graph_builder.make_jazz import JazzDataStore, PerformanceFeatures
 from jazz_graph.training.logging import load_embeddings
 
 if TYPE_CHECKING:
@@ -83,8 +83,8 @@ class LookupRecordings:
 
     @staticmethod
     def _get_lookup(path):
-        create = CreateTensors(path)
-        performance_data = create.load_parquet('performance_nodes.parquet')
+        store = JazzDataStore(path)
+        performance_data = PerformanceFeatures(store).data()
         ids = np.arange(len(performance_data))
         lookup = pd.DataFrame(ids, index=performance_data.recording_id, columns=['ids'])
         return lookup
@@ -190,7 +190,6 @@ class InferenceRecommender(Recommender):
 ## Inductive Graph Recommender
 
 from jazz_graph.data.graph_transforms import extend_graph
-from jazz_graph.data.graph_builder.graph_builder import make_jazz_data, CreateTensors
 from jazz_graph.model.model import JazzModel
 
 class PredictLinkRecommender(Recommender):
