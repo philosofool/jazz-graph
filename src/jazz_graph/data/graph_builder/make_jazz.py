@@ -1,7 +1,6 @@
 from functools import cache
 from pathlib import Path
 import pandas as pd
-import numpy as np
 import torch
 from torch_geometric.data import HeteroData
 from torch_geometric.transforms import ToUndirected

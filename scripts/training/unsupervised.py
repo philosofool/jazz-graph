@@ -1,12 +1,5 @@
-from collections import Counter
 from collections.abc import Callable
-from functools import partial
 from pathlib import Path
-from math import exp
-import jsonlines
-import pandas as pd
-import numpy as np
-from numpy.typing import ArrayLike
 import os
 
 from ignite.engine import Engine, Events
@@ -14,31 +7,16 @@ from ignite.handlers import ProgressBar
 from ignite.metrics import RunningAverage
 
 import torch
-from torch import layer_norm, seed
-from torch_geometric.data import HeteroData
-from torch_geometric.loader import NeighborLoader
-from torch_geometric.nn import GraphConv, SAGEConv, to_hetero, HeteroConv
-from torch_geometric import transforms as T
 from torch_geometric import seed_everything
 
-from jazz_graph.data.fetch import fetch_recording_traits
-from jazz_graph.data.reporting import inspect_degrees
-from jazz_graph.etl.transforms import map_array, map_by_index
 from jazz_graph.metrics.embedding_metrics import AlignmentLoss, UniformityLoss, MultiPositiveAlignment, EmbeddingStd
 from jazz_graph.model.model import UnsupervisedJazzModel
 from jazz_graph.training.inspect import analyze_model_embeddings
-from jazz_graph.training.views import drop_random_nodes_and_edges
-from jazz_graph.training.logging import (
-    ExperimentLogger,
-    load_model
-)
-from jazz_graph.data.graph_builder.graph_builder import CreateTensors, prune_isolated_nodes, make_jazz_data
-from jazz_graph.model.model import JazzModel, LinkPredictionModel, NodeClassifier
-from jazz_graph.training.logging import plot_logs
-from jazz_graph.training.views import MatchAlbumAugmentation, performance_album_map
-from jazz_graph.training.loss import nt_xent_loss_with_masking
-from jazz_graph.training.loop import NeighborLoaderWithJitter, UnsupervisedGNNTrainingLogic, UnsupervisedGNNTrainingLogicMatchAlbum, binary_output_transform, console_logging, log_experiment_handler, run_evaluator_handler, save_checkpoint_handler, save_embeddings_handler, console_logging_self_supervised
-
+from jazz_graph.training.views import drop_random_edges
+from jazz_graph.training.logging import ExperimentLogger
+from jazz_graph.data.graph_builder.make_jazz import JazzDataStore, make_jazz_graph
+from jazz_graph.model.model import JazzModel
+from jazz_graph.training.loop import NeighborLoaderWithJitter, UnsupervisedGNNTrainingLogic, UnsupervisedGNNTrainingLogicMatchAlbum, console_logging, log_experiment_handler, save_checkpoint_handler
 
 
 def make_album_match_trainer(model, optimizer, experiment_logger: ExperimentLogger):
@@ -105,7 +83,7 @@ def make_trainer(model, optimizer, experiment_logger: ExperimentLogger):
         model,
         optimizer,
         experiment_config['temperature'],
-        augment=lambda data: drop_random_nodes_and_edges(data, experiment_config['drop_edge_prob'])
+        augment=lambda data: drop_random_edges(data, experiment_config['drop_edge_prob'])
         # make_match_album_augmentation(models_dir)
     )
 
@@ -154,8 +132,7 @@ def train_indecies(mask):
 def make_analyze_embeddings(models_dir) -> Callable:
 
     assert os.path.exists(models_dir)
-    create = CreateTensors(models_dir)
-    data = make_jazz_data(create)
+    data = make_jazz_graph(JazzDataStore(models_dir))
 
     def analyze(engine, model):
         analyze_model_embeddings(model, data)
@@ -168,8 +145,7 @@ if __name__ == '__main__':
     seed_everything(random_seed)
     models_dir = '/workspace/local_data/graph_parquet'
     assert os.path.exists(models_dir)
-    create = CreateTensors(models_dir)
-    data = make_jazz_data(create)
+    data = make_jazz_graph(JazzDataStore(models_dir))
     import torch
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")

@@ -1,12 +1,9 @@
 import os
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from collections import namedtuple
 import warnings
-from matplotlib import artist
 import pandas as pd
-import numpy as np
 import pandera
-from numpy.typing import ArrayLike
 from collections import namedtuple
 import psycopg
 

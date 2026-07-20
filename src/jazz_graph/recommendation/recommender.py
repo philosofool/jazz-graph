@@ -3,11 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, TypeAlias
 import torch
 from torch import nn
-import torch.nn.functional as F
 import pandas as pd
 import numpy as np
-from numpy.typing import ArrayLike
-from collections.abc import Callable
 
 from jazz_graph.data.graph_builder.make_jazz import JazzDataStore, PerformanceFeatures
 from jazz_graph.training.logging import load_embeddings
@@ -56,8 +53,12 @@ class LookupRecordings:
 
     @classmethod
     def from_path(cls, node_data_path):
-        data = cls._get_lookup(node_data_path)
-        return cls(data)
+        # Build from the constructed (pruned, reindexed) graph rather than raw
+        # parquet row order: make_jazz_data drops isolated nodes, so node index
+        # i no longer corresponds to row i of performance_nodes.parquet, and
+        # trained embeddings are indexed by the post-prune node ids.
+        data = make_jazz_data(CreateTensors(node_data_path))
+        return cls.from_hetero_data(data)
 
 
     def lookup_node_index(self, listens: list[int], missing='ignore') -> np.ndarray:
@@ -72,10 +73,6 @@ class LookupRecordings:
 
     def mask_data_listens(self, listens: list[int] | np.ndarray) -> np.ndarray[tuple[int], np.dtype[np.bool_]]:
         return self.data.index.isin(listens)
-
-    def mask_node_listens(self, listens: list[int] | np.ndarray) -> np.ndarray[tuple[int], np.dtype[np.bool_]]:
-        mask = self.mask_data_listens(listens)
-        return self.data['ids']
 
     def lookup_recording_ids(self, indexes: np.ndarray) -> np.ndarray:
         """Get recording ids from a collection of node indexes."""
@@ -116,8 +113,9 @@ class Recommender:
     def get_recommendations(self, listens: list[int]) -> Recommendations:
         user_embedding = self.make_user_embedding(listens)
         similarity_scores = dot_product_similarity(user_embedding, self.embeddings.weight)
-        recommendations, scores, mask = self._sort_scores(similarity_scores)
-        return recommendations, scores, mask
+        listens_mask = self.lookup_recordings.mask_data_listens(listens)
+        recommendations, scores, sort_index = self._sort_scores(similarity_scores)
+        return recommendations, scores, listens_mask[sort_index]
 
     def _sort_scores(self, scores) -> Recommendations:
         scores = scores.view(-1)
@@ -160,6 +158,14 @@ class InferenceRecommender(Recommender):
             return (weights * scores).sum(dim=-1)
         raise ValueError("Unsupported pooling.")
 
+    def _embeddings(self):
+        try:
+            return self._embeds
+        except AttributeError:
+            x_dict, edge_index_dict = self.data.x_dict, self.data.edge_index_dict
+            self._embeds = self.model(x_dict, edge_index_dict, self.data)
+        return self._embeds
+
     @torch.no_grad()
     def get_recommendations(self, listens: list[int]) -> Recommendations:
         """Get recommendations based on input recording ids.
@@ -172,7 +178,7 @@ class InferenceRecommender(Recommender):
         """
         self.model.eval()
         x_dict, edge_index_dict = self.data.x_dict, self.data.edge_index_dict
-        performance_embed = self.model(x_dict, edge_index_dict, self.data)['performance']
+        performance_embed = self._embeddings()['performance']
 
         familiar_nodes = self.lookup_recordings.lookup_node_index(listens)
         familiar_perf = performance_embed[familiar_nodes]
@@ -438,12 +444,6 @@ class RandomWalkRecommender(Recommender):
         if return_intermediate:
             return walks, inter_nodes
         return walks
-
-
-def filter_valid_walks(walks: torch.Tensor) -> torch.Tensor:
-    """Remove walks that hit a dead end (destination == -1)."""
-    return walks[walks[:, 1] != -1]
-
 
 
 class ArtistWeightedRecommender(Recommender):

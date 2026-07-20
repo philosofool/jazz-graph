@@ -4,6 +4,8 @@ jsonlines
 matplotlib
 neo4j
 numpy
+nbclient
+nbformat
 pandas
 psycopg[binary]
 pytorch-ignite
@@ -11,6 +13,5 @@ pyarrow
 pytest
 scikit-learn
 seaborn
+tabulate
 torch-geometric
-neo4j
-psycopg[binary]

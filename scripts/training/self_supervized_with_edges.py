@@ -1,43 +1,21 @@
-from collections import Counter
-from collections.abc import Callable
-from functools import partial
 from pathlib import Path
-from math import exp
-import jsonlines
-import pandas as pd
-import numpy as np
-from numpy.typing import ArrayLike
 import os
 import pprint
-from typing import Literal
 
 from ignite.engine import Engine, Events
 from ignite.handlers import ProgressBar, EarlyStopping
 from ignite.metrics import RunningAverage
 
 import torch
-from torch import layer_norm, seed
-from torch_geometric.loader import NeighborLoader
-from torch_geometric.nn import GraphConv, SAGEConv, to_hetero, HeteroConv
-from torch_geometric import transforms as T
 from torch_geometric import seed_everything
 
-from jazz_graph.data.fetch import fetch_recording_traits
-from jazz_graph.data.graph_builder.make_jazz import JazzDataStore, make_jazz_graph_with_style_and_edges, make_jazz_graph_with_styles
-from jazz_graph.data.reporting import inspect_degrees
-from jazz_graph.etl.transforms import map_array, map_by_index
+from jazz_graph.data.graph_builder.make_jazz import JazzDataStore, make_jazz_graph_with_style_and_edges
 from jazz_graph.metrics.embedding_metrics import AlignmentLoss, UniformityLoss, MultiPositiveAlignment, EmbeddingStd
 from jazz_graph.model.model import UnsupervisedJazzModel
-from jazz_graph.training.inspect import analyze_model_embeddings
-from jazz_graph.training.loop import UnsupervisedGNNTrainingLogicMatchAlbum, binary_output_transform, console_logging_self_supervised, log_experiment_handler, run_evaluator_handler, save_checkpoint_handler, save_embeddings_handler
-from jazz_graph.training.views import drop_random_nodes_and_edges
-from jazz_graph.training.logging import (
-    ExperimentLogger,
-    load_model
-)
-from jazz_graph.data.graph_builder.graph_builder import CreateTensors, prune_isolated_nodes, make_jazz_data
+from jazz_graph.training.loop import UnsupervisedGNNTrainingLogicMatchAlbum, console_logging_self_supervised, log_experiment_handler, save_checkpoint_handler
+from jazz_graph.training.views import drop_random_edges
+from jazz_graph.training.logging import ExperimentLogger
 from jazz_graph.model.model import JazzModelWithStylesAndEdges
-from jazz_graph.training.views import MatchAlbumAugmentation
 from jazz_graph.training.loop import NeighborLoaderWithJitter, UnsupervisedGNNTrainingLogic, DualLossUnsupervisedTraining
 
 
@@ -105,7 +83,7 @@ def make_trainer(model, optimizer, experiment_logger: ExperimentLogger):
         model,
         optimizer,
         experiment_config['temperature'],
-        augment=lambda data: drop_random_nodes_and_edges(data, experiment_config['drop_edge_prob'])
+        augment=lambda data: drop_random_edges(data, experiment_config['drop_edge_prob'])
         # make_match_album_augmentation(models_dir)
     )
 
@@ -277,7 +255,7 @@ if __name__ == '__main__':
     elif experiment_config['training_task'] == 'match_album':
         trainer = make_album_match_trainer(model, optimizer, experiment_logger)
     elif experiment_config['training_task'] == 'dual_loss':
-        loop = DualLossUnsupervisedTraining(model, optimizer, experiment_config['temperature'], drop_random_nodes_and_edges)
+        loop = DualLossUnsupervisedTraining(model, optimizer, experiment_config['temperature'], drop_random_edges)
         loop.alpha = experiment_config['alpha']  # Hack.
         trainer = loop.trainer(experiment_logger)
     else:

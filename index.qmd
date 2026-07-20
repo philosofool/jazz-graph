@@ -19,11 +19,19 @@ editor: visual
 execute:
   warning: false
   echo: false
-  message: false
+  message: true
   eval: true
 jupyter: python3
 ---
 # Jazz Graph
+
+```{python}
+import os
+REPO_PATH = "https://github.com/philosofool/jazz-graph"
+
+def repo_link(rel_path: str) -> str:
+    return f"{REPO_PATH}/blob/main/{rel_path}"
+```
 
 ## System Architecture
 
@@ -31,7 +39,7 @@ jupyter: python3
 
 JazzGraph includes a data pipeline (left), machine learning system (middle) and a recommendation system (right side). The pipeline builds a graph from two public data sources. The ML system provides embeddings representing the similarity of jazz musical performances. The recommender uses these embeddings to generate recommendations.
 
-The complete repository for JazzGraph is at https://www.github.com/philosofool/jazz-graph.
+The complete repository for JazzGraph is at [https://www.github.com/philosofool/jazz-graph](https://www.github.com/philosofool/jazz-graph).
 
 ## Jazz Collaboration for Recommendation
 
@@ -82,21 +90,33 @@ To build the graph of jazz collaboration, we thus need to merge these two data s
 
 ### Process
 
-The process for combining these two datasets involved two key steps. First, it is necessary to identify a first release for each recording id. A recording id in Musicbrainz corresponds to a single distinct recorded performance which may appear on multiple different releases, including compilation and releases on different media. A release is typically an album in a medium and thus we can create a table of first releases by selecting distinct recording ids ordered by album. The first releases table includes all recording ids (Jazz or not) within Musicbrainz.
+The process for combining these two datasets involved two key steps. First, it is necessary to identify a first release for each recording id.
+A recording id in Musicbrainz corresponds to a single distinct recorded performance which may appear on multiple different releases, including compilation and releases on different media.
+A release is typically an album in a medium and thus we can create a table of first releases by selecting distinct recording ids ordered by album. The first releases table includes all recording ids (Jazz or not) within Musicbrainz.
 
-Using a uniform normalization logic, I match entries in first releases and Discogs master releases by artist name and album name, using only those Discogs releases classified as Jazz. Discogs genre is a multi-label classification applied to releases, not individual tracks on them. There are numerous recordings classified as belonging to multiple genres, including Jazz. Some releases in Discogs are multi-label because they are compilation releases akin to "Great Recordings of the 1950s" which may span several genres of music; in such cases, Discogs applies a label to a release if it applies to any track on the release. In other cases, multi-labeling occurs when tracks overlap multiple genres. It is surprisingly common, for example, that a recording is both "Electronic Music" and "Jazz." For simplicity, I used only Discogs releases with a single positive label "Jazz."
+Using a uniform normalization logic, I match entries in first releases and Discogs master releases by artist name and album name, using only those Discogs releases classified as Jazz.
+Discogs genre is a multi-label classification applied to releases, not individual tracks on them.
+There are numerous recordings classified as belonging to multiple genres, including Jazz.
+Some releases in Discogs are multi-label because they are compilation releases akin to "Great Recordings of the 1950s" which may span several genres of music;
+in such cases, Discogs applies a label to a release if it applies to any track on the release. In other cases, multi-labeling occurs when tracks overlap multiple genres.
+It is  common, for example, that a recording is both "Electronic Music" and "Jazz." For simplicity, I used only Discogs releases with a single positive label "Jazz."
 
-The matching between the two sources raises a number of common problems with string matching. Variations such as curly and straight quotes, capitalization, roman numerals and abbreviations represent some differences when matching strings. An additional variation occurs because metadata relating to the recording is sometimes included in the title.
-Among the issues of metadata, there parenthetical expressions like "(Legacy Edition)" "(5.0 Mix)" and "(Rudy van Gelder Edition)" which are basically meaningless to the song identity and not replicated across data sources. There are also parentheticals like "(Live at the Village Vanguard)" or "(Take 2)" which indicate something about the performance and may distinguish from another version in the same release. Finally, some songs include alternative titles such as "Manha de Carnaval (Black Orpheus)" or "Corcovado (Quiet Night of Quite Stars)" where an alternate title or chorus lyrics are included. Several iterations of normalization strategy were worked out to handle various cases. For example, John Coltrane's album "A Love Supreme" variously includes abbreviations, Roman/Arabic numerals and often includes "A Love Supreme: ..." in the title of each song.
+The matching between the two sources raises a number of common problems with string matching.
+Variations such as curly and straight quotes, capitalization, roman numerals and abbreviations represent some differences when matching strings. An additional variation occurs because metadata relating to the recording is sometimes included in the title.
+Among the issues of metadata, there parenthetical expressions like "(Legacy Edition)" "(5.0 Mix)" and "(Rudy van Gelder Edition)" which are basically meaningless to the song identity and not replicated across data sources.
+There are also parentheticals like "(Live at the Village Vanguard)" or "(Take 2)" which indicate something about the performance and may distinguish from another version in the same release.
+Finally, some songs include alternative titles such as "Manha de Carnaval (Black Orpheus)" or "Corcovado (Quiet Night of Quite Stars)" where an alternate title or chorus lyrics are included.
+Several iterations of normalization strategy were worked out to handle various cases. For example, John Coltrane's album "A Love Supreme" variously includes abbreviations, Roman/Arabic numerals and often includes "A Love Supreme: ..." in the title of each song.
 
 The normalization procedure here was also used downstream to match recordings in Spotify, where the addition of metadata in titles is especially common.
 
 Well before approaching a final version of the dataset, I added guardrails to prevent modifying the data with an unclean git tree. This means that the state of normalization can be seen by looking at the commit when the data was updated.
-See [`data_normalization.py`](../src/jazz_graph/clean/data_normalization.py) for exact process and examples and [`test_data_normalization.py`](../tests/clean/test_data_normalization.py) for tests, most of which are extracted from actual cases.
+See [`data_normalization.py`](`{python} repo_link('src/jazz_graph/clean/data_normalization.py')`) for exact process and examples and [`test_data_normalization.py`](`{python} repo_link('tests/clean/test_data_normalization.py')`) for tests, most of which are extracted from actual cases.
 
 After matching all recording ids in Musicbrainz corresponding to a jazz release in Discogs, I create a one-many join table in the Musicbrainz database from Musicbrainz's recording id to Discogs id. An inner join (or suitable left/right join) on this table assures than only entries that were matched are included in query results, providing a convenient way to filter any Musicbrainz query to jazz releases.
 
-Because Musicbrainz is heavily normalized, it is difficult to describe in full detail the steps needed to join, e.g., performers with recordings, in Musicbrainz. Thus, I describe the conceptual structure of join below. The files in [`queries`]('../queries') represent sequences of updates to the database, which create views of the data for convenience in the steps described below. The queries to write the necessary graph entities are in [`create_parquet_tables.py`](../scripts/create_parquet_tables.py).
+Because Musicbrainz is heavily normalized, it is difficult to describe in full detail the steps needed to join, e.g., performers with recordings, in Musicbrainz.
+Thus, I describe the conceptual structure of join below. The files in [`queries`](`{python} repo_link('queries')`) represent sequences of updates to the database, which create views of the data for convenience in the steps described below. The queries to write the necessary graph entities are in [`create_parquet_tables.py`](`{python} repo_link('scripts/create_parquet_tables.py')`).
 
 A relational table structure is a type of graph; foreign keys describe an edge between the primary entities in two tables, for example. For example, if we join a recordings table with a performers table where recordings.recording_id is performers.recording_id, we have an edge that defines an "artist -performs-> performance" edge. We can leverage this to produce three tables of nodes:
 1. recording_ids inner joined to Discogs creates the performance nodes;
@@ -115,11 +135,14 @@ I discuss the specific features with each node in the training section below.
 
 The above tables were written to parquet files and each file can be extracted with limited modification into a Pytorch Geometric heterogenous dataset. After extracting the data, I removed any isolated nodes, which correspond to performances without performer or song edges. I treated the graph as undirected. The following tables summarize the graph.
 
-| Node Type  |  Node Count  |
+| Node or Edge Type  |  Count  |
 |:--|-------------:|
 |Artist      | 24,470  |
 |Performance | 130,695 |
 |Song        | 31,828  |
+| Artist -[COMPOSED]-> Song        |        36252 |
+| Artist -[PERFORMS]-> Performance |       516713 |
+| Performance -[PERFORMING]-> Song |        86588 |
 
 Summary of node degrees by edge type:
 

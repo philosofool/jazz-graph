@@ -130,5 +130,6 @@ local_data/
 notebooks/sandbox.ipynb
 experiments/
 tests/test_pyg_data
+.devcontainer/devcontainer.json
 
 /.quarto/

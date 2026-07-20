@@ -21,6 +21,8 @@ dependencies = [
     "jsonlines",
     "psycopg[binary]",
     "fastparquet"
+    "lxml",
+    "discogs-client"
 ]
 
 [tool.setuptools]
@@ -33,7 +35,6 @@ torch = [
     "torch>=2.8",
     "torch-geometric"
 ]
-discogs = ["lxml", "discogs-client"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
