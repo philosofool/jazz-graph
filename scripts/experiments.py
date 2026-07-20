@@ -17,9 +17,8 @@ from jazz_graph.training.logging import load_model
 RANDOM_SEED = 51342
 SPOTIFY_DATA_PATH = '/workspace/local_data/spotify_dataset'
 GRAPH_DATA_PATH = '/workspace/local_data/graph_parquet'
-# Set to a run directory produced by scripts/training/metapath2vec.py
-# (e.g. '/workspace/experiments/2026-07-19_12-00-00_metapath2vec_graph_parquet')
-# to include a MetaPath2Vec baseline in baseline_experiments().
+
+# TODO: Find this programatically by filtering runs and getting the best metapath2vec run.
 METAPATH2VEC_RUN_DIR: str | None = '/workspace/experiments/2026-07-19_18-24-03_metapath2vec_graph_parquet'
 
 def make_jazz_graph_from_config(config) -> HeteroData:

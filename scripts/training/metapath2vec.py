@@ -20,6 +20,11 @@ from jazz_graph.training.loop import console_logging, log_experiment_handler, sa
 # match metapath[-1][-1] so that walk_length can extend past one cycle, and
 # the node type used to start random walks (and thus the node type embedded
 # with the most signal) is metapath[0][0].
+
+# NOTE: this is a bit unusual; path is not theoretically motivated.
+# Songs that are standards can connect in surprising ways.
+# Empirically, this worked pretty well, but expect future revisions.
+
 DEFAULT_METAPATH: list[tuple[str, str, str]] = [
     ('performance', 'rev_performs', 'artist'),
     ('artist', 'performs', 'performance'),
