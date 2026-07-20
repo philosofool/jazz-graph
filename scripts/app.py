@@ -12,7 +12,18 @@ from jazz_graph.data.graph_builder.make_jazz import make_jazz_graph_with_style_a
 
 
 from jazz_graph.clean.data_normalization import normalize_title
-from jazz_graph.recommendation.recommender import InferenceRecommender, LookupRecordings
+from jazz_graph.recommendation.recommender import InferenceRecommender, Recommender, LookupRecordings, Recommender
+
+JAZZ_GRAPH_DESCRIPTION = """Generate Jazz Musical Recommendations.
+
+JazzGraph generates jazz musical recommendations using the social network of musical collaborations
+among Jazz artists. Using over 100,000 jazz performances, nearly 25,000 artists and greater than 500,000
+connections between them, JazzGraph learns musical similarity from artists decisions about whom to
+collaborate with.
+
+This is a light-weight demonstration based on version 1.1 of the JazzGraph system. The complete write up
+of version 1.0.1 can be found at http://philosofool.github.io/jazz-graph
+"""
 
 class LookupInput:
     def __init__(self, recording_traits: pd.DataFrame):
@@ -23,29 +34,46 @@ class LookupInput:
         self.recording_traits['norm_song'] = self.recording_traits.title.apply(normalize_title)
         self.recording_traits['norm_artist'] = self.recording_traits.artist.apply(normalize_title)
 
-    def match_recordings(self, record: dict) -> pd.DataFrame:
+    def _match_recording(self, record: dict) -> pd.DataFrame:
         fields = 'album', 'artist', 'song'
         df = self.recording_traits
+        valid_filter = False
         for field in fields:
             data = record.get(field)
             if not data:
                 continue
             data = normalize_title(data)
             norm_field = 'norm_' + field
-            df = df[df[norm_field] == data]
+            mask = df[norm_field] == data
+            if not mask.any():
+                continue
+            valid_filter = True
+            df = df[mask]
         if len(df) == len(self.recording_traits):
-            ...
+            return pd.DataFrame({}, columns=self.recording_traits.columns)
         return df
 
+    def match_recordings(self, records: dict | list[dict]) -> pd.DataFrame:
+        if isinstance(records, dict):
+            result = self._match_recording(records)
+            if result.empty:
+                return self._match_recording({'album': "Kind of Blue", 'artist': "Miles Davis"})
+            return result
+        dfs = [self._match_recording(e) for e in records if not e.empty]
+        if not dfs:
+            return self._match_recording({'album': "Kind of Blue", 'artist': "Miles Davis"})
+        return pd.concat(dfs)
+
+
 class Recommend:
-    def __init__(self, recommender: InferenceRecommender, recording_traits: pd.DataFrame):
+    def __init__(self, recommender: InferenceRecommender|Recommender, recording_traits: pd.DataFrame):
         self.lookup = LookupInput(recording_traits)
         self.recording_traits = self.lookup.recording_traits[['artist', 'title', 'album', 'release_date']]
         self.recommender = recommender
 
     def recommend(self, artist, song, album):
         record = {'artist': artist, 'song': song, 'album': album}
-        df = self.lookup.match_recordings(record)
+        df = self.lookup._match_recording(record)
         # TODO: handle no matches, all matches.
         if len(df) == len(self.lookup.recording_traits):
             ...
@@ -82,7 +110,7 @@ class UnsupervisedModelAdapter(torch.nn.Module):
         return self.model(batch)
 
 
-def get_model(model_path) -> UnsupervisedModelAdapter:
+def _get_usupervised_model(model_path) -> UnsupervisedModelAdapter:
     with open(Path(model_path) / 'config.json', 'r') as f:
         run_config = json.loads(f.read())
     model_state = load_model(model_path)
@@ -92,15 +120,29 @@ def get_model(model_path) -> UnsupervisedModelAdapter:
     model = UnsupervisedModelAdapter(model)
     return model
 
-def build_recommend():
+def _get_metapath_model(model_path) -> Recommender:
+    return Recommender.from_path(model_path, '/workspace/local_data/graph_parquet')
+
+def get_model(model_path):
+    if 'gnn_simCLR' in model_path:
+        return _get_usupervised_model(model_path)
+    if 'metapath' in model_path:
+        return _get_metapath_model(model_path)
+    raise ValueError("Unable to determine model type from path.")
+
+def build_recommend(model_path):
     print("Fetching data.")
     recording_traits = fetch_recording_traits().set_index('recording_id')
-    print("Finished.\nBuilding data...")
-    graph_data = make_jazz_graph_with_style_and_edges(JazzDataStore('/workspace/local_data/graph_parquet'))
-    model_path = '/workspace/experiments/2026-04-03_16-48-18_gnn_simCLR_graph_parquet'
-    print("Loading PyG model.")
+    print("Loading model.")
     model = get_model(model_path)
-    recommender = InferenceRecommender(model, graph_data, 'softmax')
+    if isinstance(model, Recommender):
+        # Metapath2Vec: Recommender.from_path already produced a full recommender
+        # from cached embeddings, so there's no GNN forward pass to wrap.
+        recommender = model
+    else:
+        print("Building data...")
+        graph_data = make_jazz_graph_with_style_and_edges(JazzDataStore('/workspace/local_data/graph_parquet'))
+        recommender = InferenceRecommender(model, graph_data, 'softmax')
     recommend = Recommend(recommender, recording_traits)
     return recommend
 
@@ -119,18 +161,19 @@ def build_demo(recommend: Recommend):
             ['Miles Davis', 'So What', 'Kind of Blue'],
         ],
         title="JazzGraph",
-        description="Generate Jazz musical recommendations.",
+        description=JAZZ_GRAPH_DESCRIPTION,
         api_name="jazz_graph"
     )
     print("Finished building demo.")
     return demo
 
 if __name__ == '__main__':
+    model_path = '/workspace/experiments/2026-07-19_18-24-03_metapath2vec_graph_parquet'
+    recommend = build_recommend(model_path)
 
-    recommend = build_recommend()
     recs = recommend.recommend(*['Joe Henderson', 'Isotope', 'Inner Urge'])
     recs = recommend.recommend('John Coltrane', 'Psalm', 'A Love Supreme')
     # print(recs)
     demo = build_demo(recommend)
     print("Launching demo...")
-    demo.launch()
+    demo.launch(server_port=7861)
