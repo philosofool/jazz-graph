@@ -82,14 +82,6 @@ class NeighborLoaderWithJitter:
     def __len__(self):
         return len(self._loader)
 
-class Augment:
-    def __init__(self, batch, augment):
-        self.augment = augment
-        self.batch = batch
-
-    def view(self):
-        self.augment(self.batch)
-
 
 class UnsupervisedGNNTrainingLogic:
     """Define training step and eval steps."""

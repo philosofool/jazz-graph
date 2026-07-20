@@ -2,8 +2,6 @@ from jazz_graph.training.views import MatchAlbumAugmentation
 import torch
 import numpy as np
 
-import pytest
-
 class TestMatchAlbumAugmentation:
     def test_map_nodes(self, hetero_data, monkeypatch):
         recording_to_album = torch.tensor([

@@ -1,0 +1,3 @@
+local_data/
+.quarto/
+.pytest_cache/
