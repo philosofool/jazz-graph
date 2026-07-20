@@ -17,7 +17,9 @@ requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.26",
     "pandas",
-    "pandera"
+    "pandera",
+    "lxml",
+    "discogs-client"
 ]
 
 [tool.setuptools]
@@ -30,7 +32,6 @@ torch = [
     "torch>=2.8",
     "torch-geometric"
 ]
-discogs = ["lxml", "discogs-client"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

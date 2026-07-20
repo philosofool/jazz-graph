@@ -11,9 +11,11 @@ import psycopg
 from typing import TYPE_CHECKING
 
 import torch
+from torch import nn
 
 if TYPE_CHECKING:
     from jazz_graph.model.model import NodeClassifier, LinkPredictionModel, JazzModel
+    from torch_geometric.nn import MetaPath2Vec
 
 
 def get_git_commit() -> str:
@@ -144,6 +146,27 @@ class ExperimentLogger:
             'embedding_dim': base_model.performance_embed.weight.shape[1],
         }
 
+        with open(self.run_dir / "metadata.json", 'w') as f:
+            json.dump(metadata, f, indent=2)
+
+        print(f"Saved embeddings to {self.run_dir}")
+
+    def save_metapath2vec_embeddings(self, model: MetaPath2Vec):
+        """Save MetaPath2Vec node embeddings for use with a Recommender.
+
+        Written in the same format as save_embeddings (a dict of nn.Embedding
+        by node type plus a metadata.json), so Recommender.from_path can load
+        a trained MetaPath2Vec run without any further conversion.
+        """
+        node_types = list(model.start.keys())
+        embeddings = {
+            node_type: nn.Embedding.from_pretrained(model(node_type).detach().cpu())
+            for node_type in node_types
+        }
+        torch.save(embeddings, self.run_dir / "embeddings.pt")
+
+        metadata = {f'num_{node_type}s': embeddings[node_type].weight.shape[0] for node_type in node_types}
+        metadata['embedding_dim'] = model.embedding_dim
         with open(self.run_dir / "metadata.json", 'w') as f:
             json.dump(metadata, f, indent=2)
 

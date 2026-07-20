@@ -1,12 +1,13 @@
 import pandas as pd
 import numpy as np
 import torch
+from torch import nn
 from torch_geometric.data import HeteroData
 
 from torch_geometric.transforms import ToUndirected
 
 from jazz_graph.model.model import JazzModel
-from jazz_graph.recommendation.recommender import ArtistWeightedRecommender, InferenceRecommender, LookupRecordings, PredictLinkRecommender
+from jazz_graph.recommendation.recommender import ArtistWeightedRecommender, InferenceRecommender, LookupRecordings, PredictLinkRecommender, Recommender
 import pytest
 
 class TestLookupRecordings:
@@ -115,6 +116,33 @@ class TestPredictLinkRecommender:
         expected_model_weights = recommender.model.artist_embed.weight
         scores, z = recommender.inductive_rec(new_nodes, new_edges, new_embed)
         assert torch.all(expected_model_weights == recommender.model.artist_embed.weight)
+
+
+class TestRecommender:
+
+    def test_get_recommendations(self):
+        embeddings = nn.Embedding.from_pretrained(torch.tensor([
+            [.1, .1],
+            [1, 0],
+            [.1, .2],
+            [.2, .1],
+            [.3, .3]
+        ]))
+        lookup = LookupRecordings(pd.DataFrame({'ids': [0, 1, 2, 3, 4]}, index=[21, 20, 23, 22, 24]))
+        recommender = Recommender(embeddings, lookup)
+
+        recommendation, scores, mask = recommender.get_recommendations([20, 22])
+
+        # user_embedding = mean(embeddings[[1, 3]]) = [0.6, 0.05]; unsorted_scores = embeddings.weight @ user_embedding
+        unsorted_scores = torch.tensor([0.065, 0.6, 0.07, 0.125, 0.195])
+        expected_idx = torch.argsort(unsorted_scores, descending=True).numpy()
+        expected_rec = np.array([21, 20, 23, 22, 24])[expected_idx]
+        expected_mask = np.array([False, True, False, True, False])[expected_idx]
+
+        np.testing.assert_array_almost_equal(scores, unsorted_scores[expected_idx])
+        np.testing.assert_array_equal(recommendation, expected_rec)
+        np.testing.assert_array_equal(mask, expected_mask)
+        assert mask.dtype == np.bool_
 
 
 class TestInferenceRecommender:
