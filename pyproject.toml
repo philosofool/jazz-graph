@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jazz-graph"                   # Your package name (must match src/ dir if using src layout)
-version = "0.1.1"                    # Semantic version
+version = "1.1.1"                    # Semantic version
 description = "Tools for working with PyG and jazz graph model."
 readme = "README.md"                 # Long description
 license = { text = "MIT" }
@@ -19,7 +19,10 @@ dependencies = [
     "pandas",
     "pandera",
     "lxml",
-    "discogs-client"
+    "discogs-client",
+    "psycopg[binary]",
+    "jsonlines",
+    "fastparquet"
 ]
 
 [tool.setuptools]
