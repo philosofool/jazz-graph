@@ -6,7 +6,7 @@ from torch import nn
 import pandas as pd
 import numpy as np
 
-from jazz_graph.data.graph_builder.make_jazz import JazzDataStore
+from jazz_graph.data.graph_builder.make_jazz import JazzDataStore, make_jazz_graph
 from jazz_graph.training.logging import load_embeddings
 
 if TYPE_CHECKING:
@@ -54,10 +54,11 @@ class LookupRecordings:
     @classmethod
     def from_path(cls, node_data_path):
         # Build from the constructed (pruned, reindexed) graph rather than raw
-        # parquet row order: make_jazz_data drops isolated nodes, so node index
+        # parquet row order: make_jazz_graph drops isolated nodes, so node index
         # i no longer corresponds to row i of performance_nodes.parquet, and
         # trained embeddings are indexed by the post-prune node ids.
-        data = make_jazz_data(CreateTensors(node_data_path))
+        store = JazzDataStore(node_data_path)
+        data = make_jazz_graph(store)
         return cls.from_hetero_data(data)
 
 
