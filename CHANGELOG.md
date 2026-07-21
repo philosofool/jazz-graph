@@ -1,5 +1,10 @@
 # ChangeLog
 
+## [1.1.1] - 2026-07-21
+
+- Hotfixes bug in Lookuprecordings.from_path
+- Upddates pyproject version to 1.1.x (from 0.1.1, which should have been included in release 1.1.0)
+
 ## [1.1.0] - 2026-07-20
 
 - Add metapath2vec model and experimentaiton framework around it. Expect future experiments with other models.
