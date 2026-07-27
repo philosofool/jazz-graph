@@ -2,7 +2,7 @@
 // Copy this to 'devcontainer.json' and it should configure your local
 // dev container environment for pytorch development.
 {
-  "name": "python-gpu-torch-env",
+  "name": "jazz-graph-torch-env",
   "build": {
     "dockerfile": "Dockerfile",
     "context": ".."
@@ -19,8 +19,9 @@
   },
   "workspaceFolder": "/workspace",
   "mounts": [
-    "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached"
-  ],
+  "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "source=${localEnv:HOME}${localEnv:USERPROFILE}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached"
+],
   "remoteUser": "vscode",
   // Swap these to enable/disable GPUs if they are available on your host machine.
   // "runArgs": [
@@ -40,7 +41,9 @@
       "extensions": [
         "ms-python.python",
         "ms-python.vscode-pylance",
-        "ms-toolsai.jupyter"
+        "ms-python.python-debugger",
+        "ms-toolsai.jupyter",
+        "anthropic.claude-code"
       ]
     }
   }
