@@ -5,7 +5,7 @@ author:
   - author: "S. J. Lenhart"
     affiliations:
       - name: "College of Information Science, University of Arizona"
-description: "A full recommendation system, including data pipeline, graph construction, self-supervised graph neural network learn, and recommendations system."
+description: "A full recommendation system, including data pipeline, graph construction, self-supervised graph neural network learning, and recommendations system."
 format:
    html:
     code-tools: true
@@ -32,6 +32,10 @@ REPO_PATH = "https://github.com/philosofool/jazz-graph"
 def repo_link(rel_path: str) -> str:
     return f"{REPO_PATH}/blob/main/{rel_path}"
 ```
+## Demo Deployment
+
+Try it out: [https://huggingface.co/spaces/philosofool/jazz-graph](https://huggingface.co/spaces/philosofool/jazz-graph)
+
 
 ## System Architecture
 
