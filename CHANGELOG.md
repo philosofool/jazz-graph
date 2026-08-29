@@ -1,5 +1,7 @@
 # ChangeLog
 
+## [1.2.0] - TBD
+
 ## [1.1.1] - 2026-07-21
 
 - Hotfixes bug in Lookuprecordings.from_path
